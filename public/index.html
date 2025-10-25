@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema Prolog</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Three.js para visualización 3D -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FontLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/geometries/TextGeometry.js"></script>
+</head>
+
+<body>
+    <!-- Partículas de fondo -->
+    <div class="particles">
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+        <div class="particle"></div>
+    </div>
+
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-robot"></i>
+                    <div>
+                        <h1>Sistema Prolog + ML</h1>
+                        <div class="subtitle">Análisis Inteligente Interactivo</div>
+                    </div>
+                </div>
+                <div class="project-info">
+                    <p><i class="fas fa-database"></i> Procesamiento de CSV/Excel</p>
+                    <p><i class="fas fa-brain"></i> Consultas Prolog Inteligentes</p>
+                    <p><i class="fas fa-camera"></i> Reconocimiento de Imágenes</p>
+                    <p><i class="fas fa-sliders-h"></i> Reglas Configurables</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Sistema de notificaciones -->
+        <div id="notificationContainer" class="notification-container"></div>
+
+        <!-- Alertas y Notificaciones -->
+        <div class="alert" id="alert"></div>
+
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="loading-content">
+                <div class="loading-spinner"></div>
+                <p>Procesando...</p>
+            </div>
+        </div>
+
+        <!-- Sección de carga de archivos -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="fas fa-file-upload"></i>
+                    Cargar Datos o Imágenes
+                </div>
+                <div class="session-info">
+                    <span id="sessionStatus">Sesión: Activa</span>
+                </div>
+            </div>
+
+            <!-- Pestañas para diferentes tipos de archivos -->
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('data')">
+                    <i class="fas fa-table"></i> Datos
+                </button>
+                <button class="tab-btn" onclick="switchTab('image')">
+                    <i class="fas fa-camera"></i> Imágenes
+                </button>
+            </div>
+
+            <!-- Contenido de datos -->
+            <div id="dataTab" class="tab-content active">
+                <div class="file-upload-area" id="dataUploadArea">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <h3>Arrastra archivos de datos aquí</h3>
+                    <p>Formatos soportados: CSV, Excel (XLSX, XLS)</p>
+                    <button class="btn btn-primary" onclick="document.getElementById('dataFileInput').click()">
+                        <i class="fas fa-folder-open"></i>
+                        Seleccionar Archivo de Datos
+                    </button>
+                    <input type="file" id="dataFileInput" accept=".csv,.xlsx,.xls" style="display: none;">
+                </div>
+
+                <div class="file-info" id="fileInfo"></div>
+
+                <!-- Tabla de datos -->
+                <div id="dataTable" class="data-preview"></div>
+            </div>
+
+            <!-- Contenido de imágenes -->
+            <div id="imageTab" class="tab-content">
+                <div class="file-upload-area" id="imageUploadArea">
+                    <i class="fas fa-brain"></i>
+                    <h3>Sistema de Análisis Autónomo</h3>
+                    <p>Sube una imagen para análisis generativo automático</p>
+                    <p class="autonomous-description">
+                        <small>El sistema generará conocimiento, clasificaciones y reglas Prolog automáticamente</small>
+                    </p>
+                    <button class="btn btn-secondary" onclick="document.getElementById('imageFileInput').click()">
+                        <i class="fas fa-camera"></i>
+                        Analizar con IA Autónoma
+                    </button>
+                    <input type="file" id="imageFileInput" accept=".jpg,.jpeg,.png,.gif" style="display: none;">
+                </div>
+            </div>
+        </div>
+
+        <!-- Estadísticas y información -->
+        <div class="card" id="statsCard" style="display: none;">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="fas fa-chart-bar"></i>
+                    Estadísticas de Datos
+                </div>
+            </div>
+            <div class="stats-grid" id="statsGrid"></div>
+        </div>
+
+        <!-- Editor de Reglas Prolog -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="fas fa-code"></i>
+                    Editor de Reglas Prolog
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-outline btn-sm" onclick="generateRules()">
+                        <i class="fas fa-magic"></i> Generar Automáticamente
+                    </button>
+                    <button class="btn btn-outline btn-sm" onclick="saveRules()">
+                        <i class="fas fa-save"></i> Guardar Reglas
+                    </button>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group" style="flex: 1;">
+                    <label for="ruleName">Nombre de las Reglas:</label>
+                    <input type="text" id="ruleName" class="form-control" placeholder="mis_reglas_personalizadas"
+                        value="reglas_personalizadas">
+                </div>
+                <div class="form-group">
+                    <label for="ruleCategory">Categoría:</label>
+                    <select id="ruleCategory" class="form-control" onchange="loadRuleTemplate()">
+                        <option value="custom">Personalizadas</option>
+                        <option value="analysis">Análisis</option>
+                        <option value="classification">Clasificación</option>
+                        <option value="validation">Validación</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="customRules">Reglas Personalizadas:</label>
+                <textarea id="customRules" class="form-control code-editor" placeholder="% Escribe tus reglas Prolog aquí...
+% Ejemplo: 
+% es_grande(X) :- dato(X, Tamano), Tamano > 100.
+% es_rojo(X) :- dato(X, Color), Color = 'rojo'." rows="8"></textarea>
+            </div>
+
+            <div class="prolog-examples">
+                <h4>Plantillas de Reglas:</h4>
+                <div class="example-buttons">
+                    <button class="btn btn-outline btn-sm" onclick="loadTemplate('filter')">
+                        <i class="fas fa-filter"></i> Filtros
+                    </button>
+                    <button class="btn btn-outline btn-sm" onclick="loadTemplate('classification')">
+                        <i class="fas fa-tags"></i> Clasificación
+                    </button>
+                    <button class="btn btn-outline btn-sm" onclick="loadTemplate('calculation')">
+                        <i class="fas fa-calculator"></i> Cálculos
+                    </button>
+                    <button class="btn btn-outline btn-sm" onclick="loadTemplate('validation')">
+                        <i class="fas fa-check-circle"></i> Validación
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Carrusel de Reglas Guardadas -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="fas fa-cards"></i>
+                    Carrusel de Reglas Guardadas
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-outline btn-sm" onclick="clearAllRules()">
+                        <i class="fas fa-trash"></i> Limpiar Todo
+                    </button>
+                </div>
+            </div>
+
+            <!-- Controles del carrusel -->
+            <div class="carousel-controls">
+                <button class="btn btn-outline btn-sm" onclick="prevRuleCard()">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <span class="carousel-info" id="carouselInfo">Mostrando 0 de 0 reglas</span>
+                <button class="btn btn-outline btn-sm" onclick="nextRuleCard()">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+
+            <!-- Contenedor del carrusel -->
+            <div class="rules-carousel-container">
+                <div class="rules-carousel" id="rulesCarousel">
+                    <!-- Las cards se generarán dinámicamente aquí -->
+                </div>
+            </div>
+
+            <!-- Indicadores de paginación -->
+            <div class="carousel-indicators" id="carouselIndicators">
+                <!-- Los indicadores se generarán dinámicamente -->
+            </div>
+        </div>
+
+        <!-- Visualización 3D para DATOS (oculta inicialmente) -->
+        <div class="card" id="3dVisualizationCard" style="display: none;">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="fas fa-cube"></i>
+                    Visualización 3D Interactiva de Datos
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-outline btn-sm" onclick="toggle3DView()">
+                        <i class="fas fa-expand"></i> Pantalla Completa
+                    </button>
+                    <button class="btn btn-outline btn-sm" onclick="export3DScene()">
+                        <i class="fas fa-download"></i> Exportar
+                    </button>
+                    <button class="btn btn-primary btn-sm" onclick="refresh3DVisualization()">
+                        <i class="fas fa-sync"></i> Actualizar 3D
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filtro Prolog para consultas en tiempo real -->
+            <div class="prolog-filter-3d">
+                <h4><i class="fas fa-filter"></i> Filtro Prolog Interactivo</h4>
+                <div class="filter-controls">
+                    <div class="form-group">
+                        <label for="prologFilter">Consulta Prolog para filtrar:</label>
+                        <textarea id="prologFilter" class="form-control"
+                            placeholder="Ejemplo: dato(ID, 'edad', Valor), Valor > 30." rows="2"></textarea>
+                    </div>
+                    <div class="filter-actions">
+                        <button class="btn btn-primary" onclick="applyPrologFilter()">
+                            <i class="fas fa-play"></i> Aplicar Filtro
+                        </button>
+                        <button class="btn btn-outline" onclick="clearPrologFilter()">
+                            <i class="fas fa-times"></i> Limpiar
+                        </button>
+                        <button class="btn btn-outline" onclick="savePrologFilter()">
+                            <i class="fas fa-save"></i> Guardar Filtro
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Filtros rápidos -->
+                <div class="quick-filters">
+                    <h5>Filtros Rápidos:</h5>
+                    <div class="quick-filter-buttons">
+                        <button class="btn btn-outline btn-sm" onclick="loadQuickFilter('numericos')">
+                            <i class="fas fa-sort-numeric-up"></i> Campos Numéricos
+                        </button>
+                        <button class="btn btn-outline btn-sm" onclick="loadQuickFilter('textuales')">
+                            <i class="fas fa-font"></i> Campos Textuales
+                        </button>
+                        <button class="btn btn-outline btn-sm" onclick="loadQuickFilter('unicos')">
+                            <i class="fas fa-star"></i> Valores Únicos
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="visualization-controls">
+                <div class="control-group">
+                    <label>Tipo de Visualización:</label>
+                    <select id="visualizationType" onchange="changeVisualizationType()">
+                        <option value="scatter">Dispersión 3D</option>
+                        <option value="network">Red de Relaciones</option>
+                        <option value="timeline">Línea de Tiempo</option>
+                        <option value="hierarchy">Jerarquía</option>
+                        <option value="cube">Cubo Interactivo</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Eje X:</label>
+                    <select id="axisX" onchange="update3DLayout()">
+                        <option value="index">Índice</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Eje Y:</label>
+                    <select id="axisY" onchange="update3DLayout()">
+                        <option value="value">Valor</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Eje Z:</label>
+                    <select id="axisZ" onchange="update3DLayout()">
+                        <option value="confidence">Confianza</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="visualization-stats" id="visualizationStats">
+                <div class="stat-item">
+                    <span class="stat-label">Registros:</span>
+                    <span class="stat-value" id="statRecords">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Objetos 3D:</span>
+                    <span class="stat-value" id="statObjects">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Filtro Activo:</span>
+                    <span class="stat-value" id="statFilter">No</span>
+                </div>
+            </div>
+
+            <div id="3dContainer" class="threejs-container">
+                <canvas id="3dCanvas"></canvas>
+                <div class="loading-3d" id="loading3D" style="display: none;">
+                    <i class="fas fa-spinner fa-spin"></i> Generando visualización 3D...
+                </div>
+                <div class="no-data-3d" id="noData3D">
+                    <i class="fas fa-cube"></i>
+                    <h4>Sin datos para visualizar</h4>
+                    <p>Carga un archivo de datos para ver la visualización 3D interactiva</p>
+                </div>
+            </div>
+
+            <div class="legend-3d" id="legend3D">
+                <h4>Leyenda 3D</h4>
+                <div class="legend-content" id="legendContent">
+                    <!-- La leyenda se generará dinámicamente -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Consultas Prolog
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <i class="fas fa-terminal"></i>
+                    Consultas Prolog
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-outline btn-sm" onclick="clearResults()">
+                        <i class="fas fa-broom"></i> Limpiar
+                    </button>
+                    <button class="btn btn-outline btn-sm" onclick="exportResults()">
+                        <i class="fas fa-download"></i> Exportar
+                    </button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="prologQuery">Consulta Prolog:</label>
+                <textarea id="prologQuery" class="form-control code-editor" placeholder="Escribe tu consulta Prolog aquí... Ejemplo: objeto_detectado(X, Y, Z)." rows="4"></textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group" style="flex: 1;">
+                    <button class="btn btn-primary btn-execute" onclick="executePrologQuery()">
+                        <i class="fas fa-play"></i> Ejecutar Consulta
+                    </button>
+                    <small class="form-text">Presiona Ctrl+Enter para ejecutar rápidamente</small>
+                </div>
+            </div>
+
+            <div id="quickQueries" class="query-suggestions"></div>
+
+            <div id="autoQueriesContainer" style="display: none;"></div>
+
+            <Resultados 
+            <div id="prologResults" class="results-container" style="display: none;">
+                <div class="result-header">
+                    <h4>Resultados de la Consulta</h4>
+                    <span id="resultCount" class="result-count">0 resultados</span>
+                </div>
+                <div class="result-content-prolog" id="prologOutput"></div>
+            </div>
+        </div> -->
+
+        <!-- En la sección de consultas, después de los botones de sugerencias
+        <div class="query-suggestions">
+            Los botones de diagnóstico se agregarán aquí automáticamente 
+        </div> -->
+
+        <!-- Reglas guardadas del servidor -->
+        <div id="savedRulesContainer"></div>
+
+        <!-- Consultas guardadas -->
+        <div id="savedQueriesContainer"></div>
+
+    </div>
+
+    <script src="app.js"></script>
+    <script src="3d-visualizer.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,15 @@
+# Archivos de entorno y secretos
+.env
+*.env
+
+# Entornos virtuales
+tfenv/
+venv/
+__pycache__/
+*.pyc
+
+# Node.js (si aplica)
+node_modules/
+
+# Otros
+.DS_Store
