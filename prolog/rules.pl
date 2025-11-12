@@ -1,97 +1,105 @@
-% Reglas básicas de Prolog para el sistema
-% Hechos y reglas de ejemplo
+% === REGLAS BÁSICAS PROLOG - COMPATIBLES CON TAU-PROLOG ===
+% Versión simplificada para Tau-Prolog
 
-% Base de conocimientos de ejemplo
-color(rojo).
-color(azul).
-color(verde).
-color(amarillo).
+% Reglas básicas de listas (COMPATIBLES)
+member(X, [X|_]).
+member(X, [_|T]) :- member(X, T).
 
-tamano(pequeno).
-tamano(mediano).
-tamano(grande).
-
-forma(circular).
-forma(cuadrado).
-forma(triangular).
-
-% Reglas de inferencia
-es_primario(Color) :- color(Color), (Color = rojo; Color = azul; Color = amarillo).
-
-es_calido(Color) :- color(Color), (Color = rojo; Color = amarillo).
-
-es_frio(Color) :- color(Color), (Color = azul; Color = verde).
-
-combinacion_armonica(Color1, Color2) :-
-    es_calido(Color1), es_calido(Color2);
-    es_frio(Color1), es_frio(Color2).
-
-% Reglas para análisis de datos
-es_mayor_que(X, Y) :- X > Y.
-es_menor_que(X, Y) :- X < Y.
-es_igual(X, X).
-
-rango_aceptable(Valor, Min, Max) :- 
-    Valor >= Min, 
-    Valor =< Max.
-
-% Reglas para patrones
-es_patron_creciente([A, B, C]) :- A < B, B < C.
-es_patron_decreciente([A, B, C]) :- A > B, B > C.
-
-% Reglas de clasificación
-clasificar_tamano(Valor, pequeno) :- Valor < 10.
-clasificar_tamano(Valor, mediano) :- Valor >= 10, Valor < 50.
-clasificar_tamano(Valor, grande) :- Valor >= 50.
-
-% Reglas lógicas
-y(A, B) :- A, B.
-o(A, B) :- A; B.
-no(A) :- \+ A.
-
-% Listas
-miembro(X, [X|_]).
-miembro(X, [_|Cola]) :- miembro(X, Cola).
-
-concatenar([], Lista, Lista).
-concatenar([Cabeza|Cola1], Lista2, [Cabeza|Cola3]) :- 
-    concatenar(Cola1, Lista2, Cola3).
-
-longitud([], 0).
-longitud([_|Cola], N) :- 
-    longitud(Cola, M), 
+length([], 0).
+length([_|T], N) :-
+    length(T, M),
     N is M + 1.
 
-invertir(Lista, Invertida) :- 
-    invertir(Lista, [], Invertida).
+append([], L, L).
+append([H|T], L, [H|R]) :-
+    append(T, L, R).
 
-invertir([], Acum, Acum).
-invertir([Cabeza|Cola], Acum, Invertida) :- 
-    invertir(Cola, [Cabeza|Acum], Invertida).
+% Conversión básica string/number (SIMPLIFICADA)
+number_string(Num, Str) :-
+    atom_number(Str, Num).  % Tau-Prolog usa atom_number en lugar de number_codes
 
-% Reglas para el sistema de datos
-valor_atipico(Valor, Media, Desviacion) :-
-    Limite is Media + 2 * Desviacion,
-    (Valor > Limite; Valor < (Media - 2 * Desviacion)).
+% Comparación numérica con strings (SIMPLIFICADA)
+es_mayor_que(Str1, Str2) :-
+    number_string(Num1, Str1),
+    number_string(Num2, Str2),
+    Num1 > Num2.
 
-tendencia_ascendente(Lista) :-
-    longitud(Lista, N),
-    N >= 3,
-    ultimos_tres(Lista, [A, B, C]),
-    A < B, B < C.
+% Búsqueda y filtrado (SIMPLIFICADO)
+encontrar_por_columna(Columna, Valor, ID) :-
+    dato(ID, Columna, Valor).
 
-ultimos_tres(Lista, [A, B, C]) :-
-    reverse(Lista, [C, B, A|_]).
+% Contar usando findall de Tau-Prolog
+contar_por_columna(Columna, Total) :-
+    findall(ID, dato(ID, Columna, _), Lista),
+    length(Lista, Total).
 
-% Reglas de negocio ejemplo
-es_venenoso(Planta) :-
-    caracteristica(Planta, color, rojo),
-    caracteristica(Planta, forma, circular).
+% REGLAS ADICIONALES PARA EL SISTEMA DE IMÁGENES
+es_comestible(ID) :- 
+    seguridad_objeto(ID, 'seguro'), 
+    estado_objeto(ID, Estado), 
+    Estado \= 'podrida', 
+    Estado \= 'madura_en_exceso'.
 
-es_comestible(Planta) :-
-    caracteristica(Planta, color, verde),
-    caracteristica(Planta, tamano, mediano).
+no_es_comestible(ID) :- seguridad_objeto(ID, 'peligroso').
+no_es_comestible(ID) :- estado_objeto(ID, 'podrida').
+no_es_comestible(ID) :- estado_objeto(ID, 'madura_en_exceso').
 
-necesita_riego(Planta) :-
-    caracteristica(Planta, humedad, Baja),
-    Baja < 30.
+esta_podrido(ID) :- estado_objeto(ID, 'podrida').
+esta_maduro(ID) :- estado_objeto(ID, 'madura').
+
+es_manzana(ID) :- 
+    objeto_detectado(ID, Objeto, _), 
+    (Objeto = 'manzana'; Objeto = 'apple').
+
+es_platano(ID) :- 
+    objeto_detectado(ID, Objeto, _), 
+    (Objeto = 'plátano'; Objeto = 'banana').
+
+es_fruta(ID) :- 
+    objeto_detectado(ID, Objeto, _), 
+    (Objeto = 'fruta'; Objeto = 'fruit'; es_manzana(ID); es_platano(ID)).
+
+% Conteos básicos
+contar_objetos_seguros(Total) :- 
+    findall(ID, seguridad_objeto(ID, 'seguro'), Lista), 
+    length(Lista, Total).
+
+contar_objetos_peligrosos(Total) :- 
+    findall(ID, seguridad_objeto(ID, 'peligroso'), Lista), 
+    length(Lista, Total).
+
+contar_manzanas(Total) :- 
+    findall(ID, es_manzana(ID), Lista), 
+    length(Lista, Total).
+
+contar_platanos(Total) :- 
+    findall(ID, es_platano(ID), Lista), 
+    length(Lista, Total).
+
+% Mostrar información
+mostrar_objetos :- 
+    objeto_detectado(ID, Objeto, Confianza), 
+    write('Objeto '), write(ID), write(': '), write(Objeto), 
+    write(' ('), write(Confianza), write(')'), nl, fail.
+mostrar_objetos.
+
+mostrar_seguridad :- 
+    seguridad_objeto(ID, Seguridad), 
+    write('Objeto '), write(ID), write(': '), write(Seguridad), nl, fail.
+mostrar_seguridad.
+
+mostrar_estados :- 
+    estado_objeto(ID, Estado), 
+    write('Objeto '), write(ID), write(': '), write(Estado), nl, fail.
+mostrar_estados.
+
+resumen_seguridad :- 
+    contar_objetos_seguros(Seguros), 
+    contar_objetos_peligrosos(Peligrosos), 
+    total_objetos(Total), 
+    write('Seguros: '), write(Seguros), write(' / '), write(Total), nl,
+    write('Peligrosos: '), write(Peligrosos), write(' / '), write(Total), nl.
+
+verificar_manzanas :- 
+    contar_manzanas(Total), 
+    write('Total manzanas: '), write(Total), nl.

@@ -4,14 +4,666 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema Prolog</title>
+    <title>Sistema Prolog 2025</title>
     <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <!-- Three.js para visualización 3D -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FontLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/geometries/TextGeometry.js"></script>
+    <style>
+        /* Estilos específicos para el Navbar y Footer */
+        .navbar {
+            background: var(--glass-bg);
+            backdrop-filter: var(--blur-xl);
+            -webkit-backdrop-filter: var(--blur-xl);
+            border-bottom: 1px solid var(--glass-border);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: var(--shadow-large);
+        }
+
+        .navbar-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+        }
+
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            text-decoration: none;
+        }
+
+        .navbar-logo {
+            font-size: 2rem;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            transition: var(--transition-normal);
+        }
+
+        .navbar-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--primary-light) 50%, var(--secondary-light) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .navbar-nav {
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .nav-item {
+            position: relative;
+        }
+
+        .nav-link {
+            color: var(--text-primary);
+            text-decoration: none;
+            padding: 0.75rem 1rem;
+            border-radius: var(--border-radius);
+            transition: var(--transition-normal);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 500;
+        }
+
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--primary-light);
+        }
+
+        .nav-link.active {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            box-shadow: var(--shadow-glow);
+        }
+
+        .nav-dropdown {
+            position: relative;
+        }
+
+        .dropdown-toggle {
+            cursor: pointer;
+        }
+
+        .dropdown-toggle::after {
+            content: '\f078';
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            margin-left: 0.5rem;
+            font-size: 0.8rem;
+            transition: var(--transition-normal);
+        }
+
+        .dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: var(--glass-bg);
+            backdrop-filter: var(--blur-xl);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--border-radius-lg);
+            padding: 0.5rem 0;
+            min-width: 200px;
+            box-shadow: var(--shadow-large);
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: var(--transition-normal);
+            z-index: 1000;
+        }
+
+        .nav-dropdown:hover .dropdown-menu {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .nav-dropdown:hover .dropdown-toggle::after {
+            transform: rotate(180deg);
+        }
+
+        .dropdown-item {
+            display: block;
+            padding: 0.75rem 1.5rem;
+            color: var(--text-primary);
+            text-decoration: none;
+            transition: var(--transition-normal);
+        }
+
+        .dropdown-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--primary-light);
+        }
+
+        .navbar-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .theme-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .theme-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+        }
+
+        .theme-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: 0.4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(24px);
+        }
+
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            transition: var(--transition-normal);
+        }
+
+        .user-menu:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+
+        .user-name {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        /* Footer Styles */
+        .footer {
+            background: var(--glass-bg);
+            backdrop-filter: var(--blur-xl);
+            border-top: 1px solid var(--glass-border);
+            margin-top: 3rem;
+            position: relative;
+        }
+
+        .footer::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+        }
+
+        .footer-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 3rem 2rem 2rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+        }
+
+        .footer-section h4 {
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .footer-section p {
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 0.5rem;
+        }
+
+        .tech-stack {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .tech-badge {
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            color: white;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .tech-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .tech-list li {
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .tech-list li i {
+            color: var(--accent-primary);
+            width: 16px;
+        }
+
+        .social-links {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .social-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            color: var(--text-primary);
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        .social-link:hover {
+            background: var(--accent-primary);
+            color: white;
+            transform: translateY(-3px);
+        }
+
+        .footer-bottom {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1.5rem 0;
+        }
+
+        .footer-bottom-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .footer-bottom p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .footer-stats {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .stat {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .stat i {
+            color: var(--accent-primary);
+        }
+
+        /* Variables CSS para mantener consistencia */
+        :root {
+            --primary: #8b5cf6;
+            --primary-dark: #7c3aed;
+            --primary-darker: #6d28d9;
+            --primary-light: #a78bfa;
+            --primary-lighter: #c4b5fd;
+            --primary-glow: rgba(139, 92, 246, 0.6);
+
+            --secondary: #06b6d4;
+            --secondary-dark: #0891b2;
+            --secondary-darker: #0e7490;
+            --secondary-light: #22d3ee;
+            --secondary-lighter: #67e8f9;
+            --secondary-glow: rgba(6, 182, 212, 0.6);
+
+            --accent-primary: #8b5cf6;
+            --accent-secondary: #06b6d4;
+
+            --background-dark: #020617;
+            --background-darker: #010712;
+            --background-light: #0f172a;
+            --background-lighter: #1e293b;
+
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --text-muted: #64748b;
+            --text-glow: rgba(248, 250, 252, 0.8);
+
+            --border-dark: #1e293b;
+            --border-light: #334155;
+            --border-glow: rgba(139, 92, 246, 0.4);
+
+            --shadow-soft: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-medium: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --shadow-large: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            --shadow-glow: 0 0 20px rgba(139, 92, 246, 0.3);
+            --shadow-glow-secondary: 0 0 20px rgba(6, 182, 212, 0.3);
+
+            --glass-bg: rgba(15, 23, 42, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.36);
+            --glass-highlight: rgba(255, 255, 255, 0.05);
+
+            --transition-fast: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-normal: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-slow: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+
+            --border-radius-sm: 4px;
+            --border-radius: 8px;
+            --border-radius-lg: 12px;
+            --border-radius-xl: 16px;
+            --border-radius-2xl: 20px;
+
+            --blur-sm: blur(4px);
+            --blur: blur(8px);
+            --blur-lg: blur(12px);
+            --blur-xl: blur(16px);
+        }
+
+        /* Estilos para las secciones faltantes */
+        .stats-card,
+        .quick-stats,
+        .editor-card,
+        .carousel-card,
+        .visualization-card,
+        .query-card {
+            background: var(--glass-bg);
+            backdrop-filter: var(--blur-lg);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--border-radius-2xl);
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: var(--shadow-large);
+            transition: var(--transition-normal);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .card-title {
+            font-size: 1.3rem;
+            color: var(--primary-light);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 600;
+        }
+
+        .card-actions {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .info-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1rem;
+            border-radius: var(--border-radius);
+            border-left: 3px solid var(--primary);
+        }
+
+        .info-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .info-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--border-radius);
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: var(--transition-normal);
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+        }
+
+        .code-editor {
+            font-family: 'Fira Code', 'Courier New', monospace;
+            min-height: 150px;
+            resize: vertical;
+        }
+
+        .rules-carousel {
+            display: flex;
+            gap: 1.5rem;
+            overflow-x: auto;
+            padding: 1rem 0;
+            scrollbar-width: thin;
+        }
+
+        .rule-card {
+            flex: 0 0 300px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--border-radius-lg);
+            padding: 1.5rem;
+            transition: var(--transition-normal);
+        }
+
+        .rule-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .threejs-container {
+            width: 100%;
+            height: 400px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: var(--border-radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .results-container {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            margin-top: 1rem;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .query-suggestions {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin: 1rem 0;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .navbar {
+                padding: 1rem;
+            }
+
+            .navbar-content {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .navbar-nav {
+                flex-direction: column;
+                width: 100%;
+                align-items: flex-start;
+            }
+
+            .nav-item {
+                width: 100%;
+            }
+
+            .nav-link {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .dropdown-menu {
+                position: static;
+                opacity: 1;
+                visibility: visible;
+                transform: none;
+                box-shadow: none;
+                background: transparent;
+                border: none;
+                padding-left: 1rem;
+                display: none;
+            }
+
+            .nav-dropdown:hover .dropdown-menu {
+                display: block;
+            }
+
+            .navbar-actions {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .footer-content {
+                grid-template-columns: 1fr;
+                text-align: center;
+            }
+
+            .footer-bottom-content {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .footer-stats {
+                justify-content: center;
+            }
+
+            .social-links {
+                justify-content: center;
+            }
+
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .card-header {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: flex-start;
+            }
+
+            .card-actions {
+                width: 100%;
+                justify-content: flex-start;
+            }
+        }
+    </style>
 </head>
 
 <body>
@@ -22,27 +674,123 @@
         <div class="particle"></div>
         <div class="particle"></div>
         <div class="particle"></div>
+        <div class="particle"></div>
     </div>
 
-    <div class="container">
-        <header>
-            <div class="header-content">
-                <div class="logo">
-                    <i class="fas fa-robot"></i>
-                    <div>
-                        <h1>Sistema Prolog + ML</h1>
-                        <div class="subtitle">Análisis Inteligente Interactivo</div>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="navbar-content">
+            <a href="#" class="navbar-brand">
+                <i class="fas fa-robot navbar-logo"></i>
+                <span class="navbar-title">Paradigmas y Lenguajes de Programación 2025</span>
+            </a>
+
+            <div class="navbar-nav">
+                <div class="nav-item">
+                    <a href="#" class="nav-link active">
+                        <i class="fas fa-home"></i>
+                        <span>Inicio</span>
+                    </a>
+                </div>
+
+                <div class="nav-item nav-dropdown">
+                    <a href="#" class="nav-link dropdown-toggle">
+                        <i class="fas fa-database"></i>
+                        <span>Datos</span>
+                    </a>
+                    <div class="dropdown-menu">
+                        <a href="#" class="dropdown-item" onclick="switchTab('data', event)">
+                            <i class="fas fa-upload"></i>
+                            <span>Cargar Datos</span>
+                        </a>
+                        <a href="#" class="dropdown-item" onclick="showDataTable()">
+                            <i class="fas fa-table"></i>
+                            <span>Visualizar Datos</span>
+                        </a>
+                        <a href="#" class="dropdown-item" onclick="showStats()">
+                            <i class="fas fa-chart-bar"></i>
+                            <span>Estadísticas</span>
+                        </a>
                     </div>
                 </div>
-                <div class="project-info">
-                    <p><i class="fas fa-database"></i> Procesamiento de CSV/Excel</p>
-                    <p><i class="fas fa-brain"></i> Consultas Prolog Inteligentes</p>
-                    <p><i class="fas fa-camera"></i> Reconocimiento de Imágenes</p>
-                    <p><i class="fas fa-sliders-h"></i> Reglas Configurables</p>
+
+                <div class="nav-item nav-dropdown">
+                    <a href="#" class="nav-link dropdown-toggle">
+                        <i class="fas fa-camera"></i>
+                        <span>Imágenes</span>
+                    </a>
+                    <div class="dropdown-menu">
+                        <a href="#" class="dropdown-item" onclick="switchTab('image', event)">
+                            <i class="fas fa-upload"></i>
+                            <span>Subir Imágenes</span>
+                        </a>
+                        <a href="#" class="dropdown-item" onclick="analyzeImageForAttributes()">
+                            <i class="fas fa-microscope"></i>
+                            <span>Análisis de Atributos</span>
+                        </a>
+                        <a href="#" class="dropdown-item" onclick="showImageAnalysis()">
+                            <i class="fas fa-brain"></i>
+                            <span>Detección Automatica</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="nav-item nav-dropdown">
+                    <a href="#" class="nav-link dropdown-toggle">
+                        <i class="fas fa-code"></i>
+                        <span>Prolog</span>
+                    </a>
+                    <div class="dropdown-menu">
+                        <a href="#" class="dropdown-item" onclick="scrollToQueries()">
+                            <i class="fas fa-terminal"></i>
+                            <span>Consultas</span>
+                        </a>
+                        <a href="#" class="dropdown-item" onclick="scrollToRules()">
+                            <i class="fas fa-cogs"></i>
+                            <span>Reglas</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="nav-item">
+                    <a href="#" class="nav-link" onclick="showHelp()">
+                        <i class="fas fa-question-circle"></i>
+                        <span>Ayuda</span>
+                    </a>
                 </div>
             </div>
-        </header>
 
+            <!-- Botones de administración -->
+            <div class="nav-admin-buttons">
+                <button class="btn btn-outline btn-sm" onclick="safeShowDatabaseStatus()"
+                    title="Ver estado de la base de datos">
+                    <i class="fas fa-database"></i> Estado
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="safeClearDatabase()"
+                    title="Limpiar toda la base de datos">
+                    <i class="fas fa-trash"></i> Limpiar BD
+                </button>
+            </div>
+
+            <!-- <div class="navbar-actions">
+                <div class="theme-toggle">
+                    <span><i class="fas fa-sun"></i></span>
+                    <label class="theme-switch">
+                        <input type="checkbox" id="themeToggle">
+                        <span class="slider"></span>
+                    </label>
+                    <span><i class="fas fa-moon"></i></span>
+                </div>
+
+                <div class="user-menu">
+                    <div class="user-avatar">U</div>
+                    <span class="user-name">Usuario</span>
+                </div>
+            </div> -->
+        </div>
+    </nav>
+
+    <div class="container">
         <!-- Sistema de notificaciones -->
         <div id="notificationContainer" class="notification-container"></div>
 
@@ -70,14 +818,12 @@
             </div>
 
             <!-- Pestañas para diferentes tipos de archivos -->
-            <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab('data')">
-                    <i class="fas fa-table"></i> Datos
-                </button>
-                <button class="tab-btn" onclick="switchTab('image')">
-                    <i class="fas fa-camera"></i> Imágenes
-                </button>
-            </div>
+            <button class="tab-btn active" onclick="safeSwitchTab('data', event)">
+                <i class="fas fa-table"></i> Datos
+            </button>
+            <button class="tab-btn" onclick="safeSwitchTab('image', event)">
+                <i class="fas fa-camera"></i> Imágenes
+            </button>
 
             <!-- Contenido de datos -->
             <div id="dataTab" class="tab-content active">
@@ -101,44 +847,77 @@
             <!-- Contenido de imágenes -->
             <div id="imageTab" class="tab-content">
                 <div class="file-upload-area" id="imageUploadArea">
-                    <i class="fas fa-brain"></i>
-                    <h3>Sistema de Análisis Autónomo</h3>
-                    <p>Sube una imagen para análisis generativo automático</p>
+                    <i class="fas fa-microscope"></i>
+                    <h3>Sistema de Detección de Atributos</h3>
+                    <p>Sube una imagen para análisis detallado de atributos</p>
                     <p class="autonomous-description">
-                        <small>El sistema generará conocimiento, clasificaciones y reglas Prolog automáticamente</small>
+                        <small>El sistema detectará objetos, estados, calidades y generará reglas Prolog
+                            automáticamente</small>
                     </p>
                     <button class="btn btn-secondary" onclick="document.getElementById('imageFileInput').click()">
                         <i class="fas fa-camera"></i>
-                        Analizar con IA Autónoma
+                        Analizar Atributos con Google Vision AI
                     </button>
                     <input type="file" id="imageFileInput" accept=".jpg,.jpeg,.png,.gif" style="display: none;">
+                </div>
+
+                <div class="analysis-features">
+                    <h4>¿Qué detectará el sistema?</h4>
+                    <div class="features-grid">
+                        <div class="feature-item">
+                            <i class="fas fa-apple-alt"></i>
+                            <span>Objetos (frutas, vegetales, etc.)</span>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-tag"></i>
+                            <span>Atributos y características</span>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-star"></i>
+                            <span>Estados y calidades</span>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-shield-alt"></i>
+                            <span>Seguridad para consumo</span>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-calculator"></i>
+                            <span>Conteo y estadísticas</span>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-code"></i>
+                            <span>Reglas Prolog automáticas</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- Estadísticas y información -->
-        <div class="card" id="statsCard" style="display: none;">
+        <div class="stats-card" id="statsCard" style="display: none;">
             <div class="card-header">
                 <div class="card-title">
                     <i class="fas fa-chart-bar"></i>
                     Estadísticas de Datos
                 </div>
             </div>
-            <div class="stats-grid" id="statsGrid"></div>
+            <div class="info-grid" id="statsGrid">
+                <!-- Se llenará dinámicamente -->
+            </div>
         </div>
 
         <!-- Editor de Reglas Prolog -->
-        <div class="card">
+        <div class="editor-card">
             <div class="card-header">
                 <div class="card-title">
                     <i class="fas fa-code"></i>
                     Editor de Reglas Prolog
                 </div>
                 <div class="card-actions">
-                    <button class="btn btn-outline btn-sm" onclick="generateRules()">
+                    <button class="btn btn-outline btn-sm" onclick="safeGenerateRules()">
                         <i class="fas fa-magic"></i> Generar Automáticamente
                     </button>
-                    <button class="btn btn-outline btn-sm" onclick="saveRules()">
+                    <button class="btn btn-outline btn-sm" onclick="safeSaveRules()">
                         <i class="fas fa-save"></i> Guardar Reglas
                     </button>
                 </div>
@@ -189,14 +968,14 @@
         </div>
 
         <!-- Carrusel de Reglas Guardadas -->
-        <div class="card">
+        <div class="carousel-card">
             <div class="card-header">
                 <div class="card-title">
                     <i class="fas fa-cards"></i>
                     Carrusel de Reglas Guardadas
                 </div>
                 <div class="card-actions">
-                    <button class="btn btn-outline btn-sm" onclick="clearAllRules()">
+                    <button class="btn btn-outline btn-sm" onclick="safeClearAllRules()">
                         <i class="fas fa-trash"></i> Limpiar Todo
                     </button>
                 </div>
@@ -226,143 +1005,18 @@
             </div>
         </div>
 
-        <!-- Visualización 3D para DATOS (oculta inicialmente) -->
-        <div class="card" id="3dVisualizationCard" style="display: none;">
-            <div class="card-header">
-                <div class="card-title">
-                    <i class="fas fa-cube"></i>
-                    Visualización 3D Interactiva de Datos
-                </div>
-                <div class="card-actions">
-                    <button class="btn btn-outline btn-sm" onclick="toggle3DView()">
-                        <i class="fas fa-expand"></i> Pantalla Completa
-                    </button>
-                    <button class="btn btn-outline btn-sm" onclick="export3DScene()">
-                        <i class="fas fa-download"></i> Exportar
-                    </button>
-                    <button class="btn btn-primary btn-sm" onclick="refresh3DVisualization()">
-                        <i class="fas fa-sync"></i> Actualizar 3D
-                    </button>
-                </div>
-            </div>
-
-            <!-- Filtro Prolog para consultas en tiempo real -->
-            <div class="prolog-filter-3d">
-                <h4><i class="fas fa-filter"></i> Filtro Prolog Interactivo</h4>
-                <div class="filter-controls">
-                    <div class="form-group">
-                        <label for="prologFilter">Consulta Prolog para filtrar:</label>
-                        <textarea id="prologFilter" class="form-control"
-                            placeholder="Ejemplo: dato(ID, 'edad', Valor), Valor > 30." rows="2"></textarea>
-                    </div>
-                    <div class="filter-actions">
-                        <button class="btn btn-primary" onclick="applyPrologFilter()">
-                            <i class="fas fa-play"></i> Aplicar Filtro
-                        </button>
-                        <button class="btn btn-outline" onclick="clearPrologFilter()">
-                            <i class="fas fa-times"></i> Limpiar
-                        </button>
-                        <button class="btn btn-outline" onclick="savePrologFilter()">
-                            <i class="fas fa-save"></i> Guardar Filtro
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Filtros rápidos -->
-                <div class="quick-filters">
-                    <h5>Filtros Rápidos:</h5>
-                    <div class="quick-filter-buttons">
-                        <button class="btn btn-outline btn-sm" onclick="loadQuickFilter('numericos')">
-                            <i class="fas fa-sort-numeric-up"></i> Campos Numéricos
-                        </button>
-                        <button class="btn btn-outline btn-sm" onclick="loadQuickFilter('textuales')">
-                            <i class="fas fa-font"></i> Campos Textuales
-                        </button>
-                        <button class="btn btn-outline btn-sm" onclick="loadQuickFilter('unicos')">
-                            <i class="fas fa-star"></i> Valores Únicos
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="visualization-controls">
-                <div class="control-group">
-                    <label>Tipo de Visualización:</label>
-                    <select id="visualizationType" onchange="changeVisualizationType()">
-                        <option value="scatter">Dispersión 3D</option>
-                        <option value="network">Red de Relaciones</option>
-                        <option value="timeline">Línea de Tiempo</option>
-                        <option value="hierarchy">Jerarquía</option>
-                        <option value="cube">Cubo Interactivo</option>
-                    </select>
-                </div>
-                <div class="control-group">
-                    <label>Eje X:</label>
-                    <select id="axisX" onchange="update3DLayout()">
-                        <option value="index">Índice</option>
-                    </select>
-                </div>
-                <div class="control-group">
-                    <label>Eje Y:</label>
-                    <select id="axisY" onchange="update3DLayout()">
-                        <option value="value">Valor</option>
-                    </select>
-                </div>
-                <div class="control-group">
-                    <label>Eje Z:</label>
-                    <select id="axisZ" onchange="update3DLayout()">
-                        <option value="confidence">Confianza</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="visualization-stats" id="visualizationStats">
-                <div class="stat-item">
-                    <span class="stat-label">Registros:</span>
-                    <span class="stat-value" id="statRecords">0</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Objetos 3D:</span>
-                    <span class="stat-value" id="statObjects">0</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Filtro Activo:</span>
-                    <span class="stat-value" id="statFilter">No</span>
-                </div>
-            </div>
-
-            <div id="3dContainer" class="threejs-container">
-                <canvas id="3dCanvas"></canvas>
-                <div class="loading-3d" id="loading3D" style="display: none;">
-                    <i class="fas fa-spinner fa-spin"></i> Generando visualización 3D...
-                </div>
-                <div class="no-data-3d" id="noData3D">
-                    <i class="fas fa-cube"></i>
-                    <h4>Sin datos para visualizar</h4>
-                    <p>Carga un archivo de datos para ver la visualización 3D interactiva</p>
-                </div>
-            </div>
-
-            <div class="legend-3d" id="legend3D">
-                <h4>Leyenda 3D</h4>
-                <div class="legend-content" id="legendContent">
-                    <!-- La leyenda se generará dinámicamente -->
-                </div>
-            </div>
-        </div>
-
-        <!-- Consultas Prolog
-        <div class="card">
+        <!-- Consultas Prolog -->
+        <div class="query-card">
             <div class="card-header">
                 <div class="card-title">
                     <i class="fas fa-terminal"></i>
                     Consultas Prolog
                 </div>
                 <div class="card-actions">
-                    <button class="btn btn-outline btn-sm" onclick="clearResults()">
+                    <button class="btn btn-outline btn-sm" onclick="safeClearResults()">
                         <i class="fas fa-broom"></i> Limpiar
                     </button>
-                    <button class="btn btn-outline btn-sm" onclick="exportResults()">
+                    <button class="btn btn-outline btn-sm" onclick="safeExportResults()">
                         <i class="fas fa-download"></i> Exportar
                     </button>
                 </div>
@@ -370,23 +1024,26 @@
 
             <div class="form-group">
                 <label for="prologQuery">Consulta Prolog:</label>
-                <textarea id="prologQuery" class="form-control code-editor" placeholder="Escribe tu consulta Prolog aquí... Ejemplo: objeto_detectado(X, Y, Z)." rows="4"></textarea>
+                <textarea id="prologQuery" class="form-control code-editor"
+                    placeholder="Escribe tu consulta Prolog aquí... Ejemplo: dato(ID, Columna, Valor)."
+                    rows="4"></textarea>
             </div>
 
             <div class="form-row">
                 <div class="form-group" style="flex: 1;">
-                    <button class="btn btn-primary btn-execute" onclick="executePrologQuery()">
+                    <button class="btn btn-primary btn-execute" onclick="safeExecutePrologQuery()">
                         <i class="fas fa-play"></i> Ejecutar Consulta
                     </button>
                     <small class="form-text">Presiona Ctrl+Enter para ejecutar rápidamente</small>
                 </div>
             </div>
 
-            <div id="quickQueries" class="query-suggestions"></div>
+            <div id="quickQueries" class="query-suggestions">
+                <!-- Se llenará dinámicamente con ejemplos de consultas -->
+            </div>
 
             <div id="autoQueriesContainer" style="display: none;"></div>
 
-            <Resultados 
             <div id="prologResults" class="results-container" style="display: none;">
                 <div class="result-header">
                     <h4>Resultados de la Consulta</h4>
@@ -394,12 +1051,7 @@
                 </div>
                 <div class="result-content-prolog" id="prologOutput"></div>
             </div>
-        </div> -->
-
-        <!-- En la sección de consultas, después de los botones de sugerencias
-        <div class="query-suggestions">
-            Los botones de diagnóstico se agregarán aquí automáticamente 
-        </div> -->
+        </div>
 
         <!-- Reglas guardadas del servidor -->
         <div id="savedRulesContainer"></div>
@@ -409,8 +1061,345 @@
 
     </div>
 
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-section">
+                <h4><i class="fas fa-graduation-cap"></i> Sistema Prolog + ML</h4>
+                <p>Análisis Automático Didáctico</p>
+                <p>Procesamiento de datos e imágenes con Google Vision IA</p>
+            </div>
+
+            <div class="footer-section">
+                <h4><i class="fas fa-brain"></i> Tecnologías</h4>
+                <div class="tech-stack">
+                    <span class="tech-badge">Prolog</span>
+                    <span class="tech-badge">JavaScript</span>
+                    <span class="tech-badge">Preparado para API Google Vision</span>
+                    <span class="tech-badge">Tau-Prolog</span>
+                    <span class="tech-badge">Node</span>
+                </div>
+            </div>
+
+            <div class="footer-section">
+                <h4><i class="fas fa-code"></i> Características</h4>
+                <ul class="tech-list">
+                    <li><i class="fas fa-database"></i> Procesamiento de CSV/Excel</li>
+                    <li><i class="fas fa-camera"></i> Reconocimiento de Imágenes</li>
+                    <li><i class="fas fa-terminal"></i> Consultas Prolog Automatizadas</li>
+                    <li><i class="fas fa-cube"></i> Interación Didáctica</li>
+                    <li><i class="fas fa-sliders-h"></i> Reglas Configurables</li>
+                </ul>
+            </div>
+
+            <div class="footer-section">
+                <h4><i class="fas fa-users"></i> Desarrollado por</h4>
+                <p>Küster Joaquín, Da Silva Marcos, Martinez Lázaro Ezequiel</p>
+                <div class="social-links">
+                    <a href="#" class="social-link"><i class="fab fa-github"></i></a>
+                    <a href="#" class="social-link"><i class="fab fa-linkedin"></i></a>
+                    <a href="#" class="social-link"><i class="fas fa-envelope"></i></a>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer-bottom">
+            <div class="footer-bottom-content">
+                <p>&copy; 2025 Paradigmas y Lenguajes de Programación. FCEQyN - Universidad Nacional de Misiones.</p>
+                <div class="footer-stats">
+                    <span class="stat"><i class="fas fa-heart"></i> Hecho con pasión</span>
+                    <span class="stat"><i class="fas fa-code"></i> Última actualización: <span
+                            id="lastUpdate"></span></span>
+                </div>
+            </div>
+        </div>
+    </footer>
+
     <script src="app.js"></script>
-    <script src="3d-visualizer.js"></script>
+    <script>
+        // Script para el toggle de tema
+        document.getElementById('themeToggle').addEventListener('change', function () {
+            document.body.classList.toggle('light-theme');
+        });
+
+        // Actualizar fecha de última actualización
+        document.getElementById('lastUpdate').textContent = new Date().toLocaleDateString();
+
+        // Funciones de navegación (solo navegación, sin lógica de negocio)
+        function scrollToQueries() {
+            document.querySelector('.query-card').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function scrollToRules() {
+            document.querySelector('.editor-card').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function showDataTable() {
+            const dataTable = document.getElementById('dataTable');
+            if (dataTable && dataTable.innerHTML.trim()) {
+                dataTable.scrollIntoView({ behavior: 'smooth' });
+            } else {
+                alert('Carga un archivo primero para ver la tabla de datos');
+            }
+        }
+
+        function showStats() {
+            const statsCard = document.getElementById('statsCard');
+            if (statsCard && statsCard.style.display !== 'none') {
+                statsCard.scrollIntoView({ behavior: 'smooth' });
+            } else {
+                alert('Carga un archivo primero para ver las estadísticas');
+            }
+        }
+
+        function showImageAnalysis() {
+            const analysis = document.querySelector('.attribute-analysis-results');
+            if (analysis) {
+                analysis.scrollIntoView({ behavior: 'smooth' });
+            } else {
+                alert('Analiza una imagen primero para ver los resultados');
+            }
+        }
+
+        function show3DVisualization() {
+            alert('Visualización 3D - Funcionalidad en desarrollo');
+        }
+
+        function showHelp() {
+            alert(`📚 Guía Rápida:
+• Carga archivos CSV/Excel en la pestaña "Datos"
+• Sube imágenes para análisis en la pestaña "Imágenes"  
+• Escribe consultas Prolog en el editor de consultas
+• Usa el carrusel para ejecutar reglas guardadas`);
+        }
+
+        // FUNCIONES WRAPPER - Evitan conflicto de nombres
+        function safeSwitchTab(tabName, event) {
+            if (typeof window.switchTab === 'function') {
+                window.switchTab(tabName, event);
+            } else {
+                // Fallback básico
+                document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+                document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+
+                const targetTab = document.getElementById(tabName + 'Tab');
+                if (targetTab) targetTab.classList.add('active');
+                if (event) event.currentTarget.classList.add('active');
+            }
+        }
+
+        function safeGenerateRules() {
+            if (typeof window.generateRules === 'function') {
+                window.generateRules();
+            } else {
+                alert('Generando reglas automáticamente...');
+            }
+        }
+
+        function safeSaveRules() {
+            if (typeof window.saveRules === 'function') {
+                window.saveRules();
+            } else {
+                alert('Guardando reglas...');
+            }
+        }
+
+        function safeClearAllRules() {
+            if (typeof window.clearAllRules === 'function') {
+                window.clearAllRules();
+            } else {
+                if (confirm('¿Estás seguro de que quieres eliminar todas las reglas?')) {
+                    alert('Todas las reglas han sido eliminadas');
+                }
+            }
+        }
+
+        function safeExecutePrologQuery() {
+            if (typeof window.executePrologQuery === 'function') {
+                window.executePrologQuery();
+            } else {
+                const query = document.getElementById('prologQuery')?.value;
+                if (query && query.trim()) {
+                    const results = document.getElementById('prologResults');
+                    const output = document.getElementById('prologOutput');
+                    const count = document.getElementById('resultCount');
+
+                    if (results) results.style.display = 'block';
+                    if (output) output.textContent = "Ejecutando consulta: " + query;
+                    if (count) count.textContent = "Consulta ejecutada";
+                }
+            }
+        }
+
+        function safeClearResults() {
+            if (typeof window.clearResults === 'function') {
+                window.clearResults();
+            } else {
+                const results = document.getElementById('prologResults');
+                const query = document.getElementById('prologQuery');
+                if (results) results.style.display = 'none';
+                if (query) query.value = '';
+            }
+        }
+
+        function safeExportResults() {
+            if (typeof window.exportResults === 'function') {
+                window.exportResults();
+            } else {
+                alert('Exportando resultados...');
+            }
+        }
+
+        function safeLoadExampleQuery(type) {
+            const examples = {
+                basic: "dato(ID, Columna, Valor).",
+                analysis: "findall(ID, dato(ID, 'departamento', 'IT'), Lista), length(Lista, Total).",
+                filter: "dato(ID, 'salario', Salario), number(Salario), Salario > 35000.",
+                custom: "% Escribe tu consulta personalizada aquí"
+            };
+
+            const queryEditor = document.getElementById('prologQuery');
+            if (queryEditor) {
+                queryEditor.value = examples[type] || examples.basic;
+            }
+        }
+
+        // Funciones placeholder para 3D (solo para evitar errores)
+        function placeholder3D() {
+            console.log('Función 3D - placeholder');
+        }
+
+        // Inicialización del sistema
+        document.addEventListener('DOMContentLoaded', function () {
+            console.log('🚀 Sistema Prolog + Google Vision');
+
+            // Configurar event listeners para archivos
+            const dataFileInput = document.getElementById('dataFileInput');
+            const imageFileInput = document.getElementById('imageFileInput');
+
+            if (dataFileInput) {
+                dataFileInput.addEventListener('change', function (e) {
+                    if (e.target.files.length > 0 && typeof processDataFile === 'function') {
+                        processDataFile(e.target.files[0]);
+                    }
+                });
+            }
+
+            if (imageFileInput) {
+                imageFileInput.addEventListener('change', function (e) {
+                    if (e.target.files.length > 0 && typeof processImageFile === 'function') {
+                        processImageFile(e.target.files[0]);
+                    }
+                });
+            }
+
+            // Configurar atajo de teclado para consultas
+            const queryEditor = document.getElementById('prologQuery');
+            if (queryEditor) {
+                queryEditor.addEventListener('keydown', function (e) {
+                    if (e.ctrlKey && e.key === 'Enter') {
+                        e.preventDefault();
+                        safeExecutePrologQuery();
+                    }
+                });
+            }
+
+            // Inicializar componentes del sistema después de cargar app.js
+            setTimeout(() => {
+                console.log('🔄 Inicializando componentes del sistema...');
+
+                // Inicializar componentes si existen
+                if (typeof initializeCompleteSystem === 'function') {
+                    initializeCompleteSystem();
+                }
+
+                if (typeof setupQueryExamples === 'function') {
+                    setupQueryExamples();
+                }
+
+                if (typeof loadRuleCarousel === 'function') {
+                    loadRuleCarousel();
+                }
+
+                if (typeof addDiagnosticButtons === 'function') {
+                    addDiagnosticButtons();
+                }
+
+                console.log('✅ Componentes del sistema inicializados');
+            }, 500);
+        });
+
+        // 🔥 FUNCIÓN SEGURA PARA LIMPIAR BASE DE DATOS
+        function safeClearDatabase() {
+            if (typeof window.clearDatabase === 'function') {
+                window.clearDatabase();
+            } else {
+                if (confirm('⚠️ ¿ESTÁS SEGURO?\n\nEsto eliminará TODOS los datos de la base de datos.\n\n¿Continuar?')) {
+                    // Fallback básico
+                    fetch('/admin/clear-database', { method: 'DELETE' })
+                        .then(response => response.json())
+                        .then(result => {
+                            if (result.success) {
+                                alert('✅ Base de datos limpiada correctamente');
+                                location.reload();
+                            } else {
+                                alert('❌ Error: ' + result.error);
+                            }
+                        })
+                        .catch(error => {
+                            alert('❌ Error de conexión: ' + error.message);
+                        });
+                }
+            }
+        }
+
+        // 🔥 MÁS FUNCIONES SEGURAS PARA EL NAVBAR
+        function safeShowDatabaseStatus() {
+            if (typeof window.showDatabaseStatus === 'function') {
+                window.showDatabaseStatus();
+            } else {
+                alert('Función no disponible. Recarga la página.');
+            }
+        }
+
+        function safeClearCurrentSession() {
+            if (typeof window.clearCurrentSession === 'function') {
+                window.clearCurrentSession();
+            } else {
+                alert('Función no disponible. Recarga la página.');
+            }
+        }
+
+        // Exportar todas las funciones seguras
+        window.safeClearDatabase = safeClearDatabase;
+        window.safeShowDatabaseStatus = safeShowDatabaseStatus;
+        window.safeClearCurrentSession = safeClearCurrentSession;
+
+        // Exportar la función segura
+        window.safeClearDatabase = safeClearDatabase;
+
+        // EXPORTAR SOLO LAS FUNCIONES SEGURAS - EVITA CONFLICTOS
+        window.safeSwitchTab = safeSwitchTab;
+        window.safeGenerateRules = safeGenerateRules;
+        window.safeSaveRules = safeSaveRules;
+        window.safeClearAllRules = safeClearAllRules;
+        window.safeExecutePrologQuery = safeExecutePrologQuery;
+        window.safeClearResults = safeClearResults;
+        window.safeExportResults = safeExportResults;
+        window.safeLoadExampleQuery = safeLoadExampleQuery;
+
+        // Placeholders para evitar errores
+        window.toggle3DView = placeholder3D;
+        window.export3DScene = placeholder3D;
+        window.refresh3DVisualization = placeholder3D;
+        window.changeVisualizationType = placeholder3D;
+        window.update3DLayout = placeholder3D;
+        window.applyPrologFilter = placeholder3D;
+        window.clearPrologFilter = placeholder3D;
+        window.savePrologFilter = placeholder3D;
+        window.loadQuickFilter = placeholder3D;
+        window.displaySavedRules = function (rules) { console.log('displaySavedRules:', rules); };
+    </script>
 </body>
 
 </html>

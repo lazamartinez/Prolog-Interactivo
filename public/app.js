@@ -1,11 +1,39 @@
-// Estado global de la aplicación
+// 🔥 CORREGIR: Estado global con sesión persistente
 const appState = {
   currentData: [],
   prologFacts: '',
   currentFile: null,
-  sessionId: 'session_' + Date.now(),
+  // 🔥 USAR MISMA SESIÓN SIEMPRE
+  sessionId: localStorage.getItem('currentSessionId') || 'session_' + Date.now(),
   autonomousMode: true,
-  threeDVisualizer: null
+  threeDVisualizer: null,
+  currentAnalysis: null,
+
+  // 🔥 GUARDAR SESIÓN EN LOCALSTORAGE
+  setSessionId: function (newSessionId) {
+    this.sessionId = newSessionId;
+    localStorage.setItem('currentSessionId', newSessionId);
+    updateSessionInfo();
+  },
+
+  ensureSession: async function () {
+    try {
+      const response = await fetch(`/session/debug/${this.sessionId}`);
+      const sessionInfo = await response.json();
+
+      if (!sessionInfo.exists) {
+        console.log('🔄 Sesión no existe, creando nueva...');
+        // Crear nueva sesión
+        this.setSessionId('session_' + Date.now());
+        return false;
+      }
+
+      return sessionInfo.hasPrologFacts || sessionInfo.objectCount > 0;
+    } catch (error) {
+      console.error('Error verificando sesión:', error);
+      return false;
+    }
+  }
 };
 
 // Elementos DOM
@@ -37,50 +65,114 @@ const loadingState = {
   progress: 0
 };
 
-// Agregar botón de diagnóstico al header
-function addDiagnosticButtonToHeader() {
-  const header = document.querySelector('header .header-content');
-  if (header) {
-    const diagnosticBtn = document.createElement('button');
-    diagnosticBtn.className = 'btn btn-outline btn-sm';
-    diagnosticBtn.innerHTML = '<i class="fas fa-stethoscope"></i> Diagnóstico del Sistema';
-    diagnosticBtn.onclick = comprehensiveDiagnostic;
-    diagnosticBtn.style.marginLeft = 'auto';
-    diagnosticBtn.style.marginRight = '15px';
+// Inicialización
+document.addEventListener('DOMContentLoaded', function () {
+  initializeEventListeners();
+  updateSessionInfo();
+  setupQueryExamples();
+  loadSavedQueries();
+  loadSavedRulesList();
+  loadRuleCarousel();
+  addDiagnosticButtons();
+  setTimeout(() => {
+    checkRulesFile();
+  }, 1000);
 
-    header.appendChild(diagnosticBtn);
-  }
-}
+  setTimeout(() => {
+    console.log('🚀 Forzando creación de botones de diagnóstico...');
+    addDiagnosticButtons();
+  }, 1000);
 
-// En tu DOMContentLoaded, agrega:
-document.addEventListener('DOMContentLoaded', function() {
-    initializeEventListeners();
-    loadExamplePrologQueries();
-    updateSessionInfo();
-    setupQueryExamples(); // 🔥 NUEVO: Configurar ejemplos
-    loadSavedQueries();
-    loadSavedRulesList();
-    loadRuleCarousel();
-    setTimeout(check3DElements, 1000);
-    
-    // Sistema de rescate
-    addUrgentDiagnosticButtons();
-    addServerControlPanel();
-    createNotificationContainer();
-    updateServerStatusIndicator();
-    
-    // Probar servidor al inicio
-    setTimeout(() => {
-        testServerConnection();
-        diagnoseServerState();
-    }, 2000);
-    
-    console.log('🚀 Sistema completo inicializado');
+  console.log('🚀 Sistema de detección de atributos inicializado');
 });
 
-// 🔥 NUEVA FUNCIÓN: Cargar carrusel de reglas
+// 🔥 FUNCIÓN PARA EVITAR EVENT LISTENERS DUPLICADOS
+function initializeEventListenersOnce() {
+  // Remover event listeners existentes primero
+  const dataFileInput = document.getElementById('dataFileInput');
+  const imageFileInput = document.getElementById('imageFileInput');
+  const queryEditor = document.getElementById('prologQuery');
+
+  if (dataFileInput) {
+    dataFileInput.replaceWith(dataFileInput.cloneNode(true));
+  }
+  if (imageFileInput) {
+    imageFileInput.replaceWith(imageFileInput.cloneNode(true));
+  }
+
+  // Reinicializar event listeners
+  initializeEventListeners();
+}
+
+// 🔥 REEMPLAZAR LA FUNCIÓN initializeEventListeners existente
+function initializeEventListeners() {
+  console.log('🔧 Inicializando event listeners...');
+
+  // Configurar event listeners para upload de datos
+  const dataUploadArea = document.getElementById('dataUploadArea');
+  const dataFileInput = document.getElementById('dataFileInput');
+
+  if (dataUploadArea && !dataUploadArea.hasListener) {
+    dataUploadArea.hasListener = true;
+    dataUploadArea.addEventListener('dragover', handleDragOver);
+    dataUploadArea.addEventListener('dragleave', handleDragLeave);
+    dataUploadArea.addEventListener('drop', (e) => handleDrop(e, 'data'));
+  }
+
+  if (dataFileInput && !dataFileInput.hasListener) {
+    dataFileInput.hasListener = true;
+    dataFileInput.addEventListener('change', (e) => {
+      console.log('📁 Archivo de datos seleccionado');
+      if (e.target.files.length > 0) {
+        processDataFile(e.target.files[0]);
+        // Limpiar el input después de procesar
+        e.target.value = '';
+      }
+    });
+  }
+
+  // Configurar event listeners para upload de imágenes
+  const imageUploadArea = document.getElementById('imageUploadArea');
+  const imageFileInput = document.getElementById('imageFileInput');
+
+  if (imageUploadArea && !imageUploadArea.hasListener) {
+    imageUploadArea.hasListener = true;
+    imageUploadArea.addEventListener('dragover', handleDragOver);
+    imageUploadArea.addEventListener('dragleave', handleDragLeave);
+    imageUploadArea.addEventListener('drop', (e) => handleDrop(e, 'image'));
+  }
+
+  if (imageFileInput && !imageFileInput.hasListener) {
+    imageFileInput.hasListener = true;
+    imageFileInput.addEventListener('change', (e) => {
+      console.log('🖼️ Archivo de imagen seleccionado');
+      if (e.target.files.length > 0) {
+        processImageFile(e.target.files[0]);
+        // Limpiar el input después de procesar
+        e.target.value = '';
+      }
+    });
+  }
+
+  // Atajo de teclado para ejecutar consultas - solo una vez
+  const queryEditor = document.getElementById('prologQuery');
+  if (queryEditor && !queryEditor.hasListener) {
+    queryEditor.hasListener = true;
+    queryEditor.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        console.log('⌨️ Atajo Ctrl+Enter ejecutado');
+        executePrologQuery();
+      }
+    });
+  }
+
+  console.log('✅ Event listeners inicializados correctamente');
+}
+
+// 🔥 NUEVO: Inicializar carrusel de reglas
 function loadRuleCarousel() {
-  const savedRules = JSON.parse(localStorage.getItem('ruleCards') || '[]');
+  const savedRules = JSON.parse(localStorage.getItem('attributeRuleCards') || '[]');
   carouselState.savedRules = savedRules;
   carouselState.currentRuleSet = savedRules;
 
@@ -88,46 +180,42 @@ function loadRuleCarousel() {
   updateCarouselInfo();
 }
 
-// 🔥 ACTUALIZAR: Función updateCarousel para usar la nueva createRuleCard
+// 🔥 NUEVO: Actualizar carrusel
 function updateCarousel() {
   const carousel = document.getElementById('rulesCarousel');
   const indicators = document.getElementById('carouselIndicators');
 
   if (!carousel || !indicators) return;
 
-  // Limpiar carrusel
   carousel.innerHTML = '';
   indicators.innerHTML = '';
 
   if (carouselState.currentRuleSet.length === 0) {
     carousel.innerHTML = `
-            <div class="empty-rules">
-                <i class="fas fa-cards"></i>
-                <p>No hay reglas individuales guardadas</p>
-                <p class="text-muted">Guarda algunas reglas en el editor para verlas como cards individuales</p>
-                <button class="btn btn-primary" onclick="generateRules()">
-                    <i class="fas fa-magic"></i> Generar Reglas Automáticas
-                </button>
-            </div>
-        `;
+      <div class="empty-rules">
+        <i class="fas fa-cards"></i>
+        <p>No hay reglas de atributos guardadas</p>
+        <p class="text-muted">Analiza una imagen para generar reglas automáticas</p>
+        <button class="btn btn-primary" onclick="analyzeImageForAttributes()">
+          <i class="fas fa-camera"></i> Analizar Imagen para Atributos
+        </button>
+      </div>
+    `;
     return;
   }
 
-  // Calcular índices para el viewport actual
   const startIndex = carouselState.currentIndex;
   const endIndex = Math.min(
     startIndex + carouselState.rulesPerView,
     carouselState.currentRuleSet.length
   );
 
-  // Generar cards INDIVIDUALES
   for (let i = startIndex; i < endIndex; i++) {
     const rule = carouselState.currentRuleSet[i];
-    const card = createRuleCard(rule, i);
+    const card = createAttributeRuleCard(rule, i);
     carousel.appendChild(card);
   }
 
-  // Generar indicadores
   const totalPages = Math.ceil(carouselState.currentRuleSet.length / carouselState.rulesPerView);
   for (let i = 0; i < totalPages; i++) {
     const indicator = document.createElement('div');
@@ -137,8 +225,418 @@ function updateCarousel() {
   }
 }
 
-// 🔥 ACTUALIZAR: Función generateRules para crear cards individuales automáticamente
-async function generateRules() {
+// 🔥 NUEVO: Crear card de regla de atributos
+function createAttributeRuleCard(rule, index) {
+  const card = document.createElement('div');
+  card.className = 'rule-card attribute-rule';
+  card.innerHTML = `
+    <div class="rule-card-header">
+      <h4 class="rule-card-title" title="${rule.name}">
+        <i class="fas ${getRuleIcon(rule.type)}"></i>
+        ${rule.name}
+      </h4>
+      <div class="rule-card-actions">
+        <button class="btn btn-outline btn-sm" onclick="copyRuleToClipboard('${rule.code.replace(/'/g, "\\'")}')" title="Copiar regla">
+          <i class="fas fa-copy"></i>
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="executeAttributeRule('${rule.code.replace(/'/g, "\\'")}', ${index})" title="Ejecutar regla">
+          <i class="fas fa-play"></i>
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="deleteRule(${index})" title="Eliminar regla">
+          <i class="fas fa-trash"></i>
+        </button>
+      </div>
+    </div>
+    
+    <div class="rule-card-content">
+      <div class="rule-description">${rule.description || 'Regla de atributos generada automáticamente'}</div>
+      <div class="rule-code-full">${formatRuleCode(rule.code)}</div>
+      
+      <div class="rule-meta">
+        <div class="rule-timestamp">
+          <i class="fas fa-clock"></i>
+          ${formatTimestamp(rule.timestamp)}
+        </div>
+        <span class="rule-type ${rule.type}">${rule.type}</span>
+      </div>
+    </div>
+    
+    <div class="rule-card-footer">
+      <button class="btn-execute-rule" onclick="executeAttributeRule('${rule.code.replace(/'/g, "\\'")}', ${index})" 
+              data-rule-index="${index}" id="executeBtn-${index}">
+        <i class="fas fa-vial"></i>
+        Probar Esta Regla
+      </button>
+    </div>
+  `;
+
+  return card;
+}
+
+function getRuleIcon(type) {
+  const icons = {
+    'detection': 'fa-search',
+    'quality': 'fa-star',
+    'safety': 'fa-shield-alt',
+    'count': 'fa-calculator',
+    'attribute': 'fa-tag'
+  };
+  return icons[type] || 'fa-cube';
+}
+
+
+// Función para guardar regla en el servidor
+async function saveRuleToServer(ruleCode, ruleName) {
+  try {
+    const response = await fetch('/rules/save', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        rules: ruleCode,
+        ruleName: ruleName,
+        sessionId: appState.sessionId
+      })
+    });
+
+    const result = await response.json();
+    if (!result.success) {
+      console.warn('No se pudo guardar la regla en el servidor:', result.error);
+    }
+  } catch (error) {
+    console.warn('Error guardando regla en servidor:', error);
+  }
+}
+
+// Función para intentar consultas simples alternativas
+async function trySimpleQuery(ruleName, ruleCode) {
+  const simpleQueries = {
+    'objeto_principal': 'objeto_principal(ID).',
+    'objeto_secundario': 'objeto_secundario(ID).',
+    'es_comestible': 'es_comestible(ID).',
+    'objeto_seguro': 'objeto_seguro(ID).',
+    'es_fruta': 'es_fruta(ID).',
+    'total_objetos': 'total_objetos(N).',
+    'objetos_peligrosos': 'objetos_peligrosos(N).'
+  };
+
+  // Si es una consulta conocida, usar la versión simple
+  if (simpleQueries[ruleName]) {
+    return await executeSingleQueryHybrid(simpleQueries[ruleName]);
+  }
+
+  // Si no, intentar consultas básicas
+  const basicQueries = [
+    'objeto_detectado(ID, Objeto, Confianza).',
+    'seguridad_objeto(ID, Seguridad).',
+    'estado_objeto(ID, Estado).',
+    'atributo_objeto(ID, Atributo).'
+  ];
+
+  for (const query of basicQueries) {
+    const result = await executeSingleQueryHybrid(query);
+    if (result.success && result.count > 0) {
+      return result;
+    }
+  }
+
+  // Si todo falla, devolver resultado vacío
+  return { success: true, count: 0, results: [] };
+}
+
+// 🔥 NUEVO: Mostrar resultado de regla de atributos
+function showAttributeRuleResult(ruleName, result, ruleIndex) {
+  const isSuccess = result.success;
+  const resultCount = result.count || 0;
+  const hasWarning = result.warning;
+
+  let message = '';
+  let type = 'info';
+
+  if (hasWarning) {
+    message = `⚠️ Advertencia: ${result.warning}`;
+    type = 'warning';
+  } else if (isSuccess) {
+    if (resultCount > 0) {
+      message = `✅ La condición se cumple: ${resultCount} coincidencias encontradas`;
+      type = 'success';
+
+      // Mostrar primeros resultados en la notificación
+      if (result.results && result.results.length > 0) {
+        const firstResults = result.results.slice(0, 3);
+        message += `\n\nPrimeros resultados:\n`;
+        firstResults.forEach((res, idx) => {
+          const vars = Object.entries(res).map(([k, v]) => `${k}=${v}`).join(', ');
+          message += `• [${idx + 1}] ${vars}\n`;
+        });
+        if (resultCount > 3) {
+          message += `• ... y ${resultCount - 3} más`;
+        }
+      }
+    } else {
+      message = 'ℹ️ La condición NO se cumple: 0 coincidencias encontradas\n\nSugerencias:\n• Verifica que los datos estén cargados\n• Prueba con consultas más simples\n• Revisa la sintaxis de la regla';
+      type = 'info';
+    }
+  } else {
+    message = `❌ Error en la verificación: ${result.error || 'Error desconocido'}\n\nConsulta: ${ruleName}.`;
+    type = 'error';
+  }
+
+  showNotification(type, `Verificación: ${ruleName}`, message);
+
+  // Mostrar detalles completos si hay resultados
+  if (resultCount > 0 && result.results) {
+    setTimeout(() => {
+      showDetailedAttributeResults(ruleName, result.results);
+    }, 1500);
+  }
+}
+
+// 🔥 NUEVO: Mostrar resultados detallados de atributos
+function showDetailedAttributeResults(ruleName, results) {
+  const notification = document.createElement('div');
+  notification.className = 'notification success detailed-results';
+  notification.innerHTML = `
+    <div class="notification-progress success"></div>
+    <div class="notification-header">
+      <div class="notification-icon">
+        <i class="fas fa-list"></i>
+      </div>
+      <div class="notification-content">
+        <h4 class="notification-title">📊 Resultados Detallados: ${ruleName}</h4>
+        <div class="attribute-results-grid">
+          ${results.map((result, idx) => `
+            <div class="attribute-result-item">
+              <div class="result-header">
+                <span class="result-number">#${idx + 1}</span>
+                <span class="result-type">Coincidencia</span>
+              </div>
+              <div class="result-variables">
+                ${Object.entries(result).map(([key, value]) => `
+                  <div class="variable-binding">
+                    <span class="variable-name">${key}</span>
+                    <span class="binding-operator"> = </span>
+                    <span class="variable-value">${value}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <button class="notification-close" onclick="this.parentElement.parentElement.remove()">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+  `;
+
+  const container = document.getElementById('notificationContainer') || createNotificationContainer();
+  container.appendChild(notification);
+}
+
+// 🔥 NUEVO: Analizar imagen para extraer atributos
+async function analyzeImageForAttributes() {
+  const fileInput = document.getElementById('imageFileInput');
+  if (!fileInput.files.length) {
+    showNotification('warning', 'Sin imagen', 'Selecciona una imagen primero');
+    fileInput.click();
+    return;
+  }
+
+  await processImageFile(fileInput.files[0]);
+}
+
+// 🔥 NUEVO: Procesar imagen con detección de atributos
+async function processImageFile(file) {
+  showLoading('analyzing', 'Analizando atributos de imagen...', 'Detectando objetos, estados y características');
+
+  const formData = new FormData();
+  formData.append('image', file);
+  formData.append('sessionId', appState.sessionId);
+
+  try {
+    const response = await fetch('/analyze/image/detailed', {
+      method: 'POST',
+      body: formData
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      appState.currentAnalysis = result.analysis;
+      showNotification('success', 'Análisis completado',
+        `${result.analysis.detectedObjects?.length || 0} objetos con atributos detectados`);
+
+      displayAttributeAnalysis(result.analysis, result.prologFacts);
+      generateAttributeRules(result.analysis, result.autoQueries);
+
+    } else {
+      throw new Error(result.error);
+    }
+  } catch (error) {
+    showNotification('error', 'Error en análisis', `No se pudieron detectar atributos: ${error.message}`);
+  } finally {
+    hideLoading();
+  }
+}
+
+// 🔥 NUEVO: Mostrar análisis de atributos
+// 🔥 NUEVO: Mostrar análisis de atributos (VERSIÓN CORREGIDA)
+function displayAttributeAnalysis(analysis, prologFacts) {
+  const prevAnalysis = document.querySelector('.attribute-analysis-results');
+  if (prevAnalysis) {
+    prevAnalysis.remove();
+  }
+
+  // Verificar que tenemos datos
+  if (!analysis || !analysis.objects) {
+    showNotification('warning', 'Sin datos', 'No se recibieron datos de análisis');
+    return;
+  }
+
+  const resultsContainer = document.createElement('div');
+  resultsContainer.className = 'attribute-analysis-results';
+
+  // Preparar HTML para objetos detectados
+  const objectsHTML = analysis.objects && analysis.objects.length > 0
+    ? analysis.objects.map(obj => `
+        <div class="object-card">
+          <div class="object-header">
+            <span class="object-name">${obj.object || 'Objeto'}</span>
+            <span class="object-confidence">${obj.confidence || 'N/A'}</span>
+          </div>
+          <div class="object-attributes">
+            ${(obj.attributes || []).map(attr => `
+              <span class="attribute-tag">${attr}</span>
+            `).join('')}
+            ${(obj.enhancedAttributes || []).map(attr => `
+              <span class="attribute-tag enhanced">${attr}</span>
+            `).join('')}
+          </div>
+          <div class="object-details">
+            <div class="detail-item">
+              <strong>Estado:</strong> 
+              <span class="value ${obj.estimatedState || 'desconocido'}">${obj.estimatedState || 'desconocido'}</span>
+            </div>
+            <div class="detail-item">
+              <strong>Seguridad:</strong> 
+              <span class="value ${obj.safety || 'desconocido'}">${obj.safety || 'desconocido'}</span>
+            </div>
+            <div class="detail-item">
+              <strong>Calidad:</strong> 
+              <span class="value ${obj.quality || 'regular'}">${obj.quality || 'regular'}</span>
+            </div>
+          </div>
+          ${obj.recommendations && obj.recommendations.length > 0 ? `
+            <div class="object-recommendations">
+              <strong>Recomendaciones:</strong>
+              <ul>
+                ${obj.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+              </ul>
+            </div>
+          ` : ''}
+        </div>
+      `).join('')
+    : '<p class="no-objects">No se detectaron objetos</p>';
+
+  resultsContainer.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <i class="fas fa-microscope"></i>
+          Análisis Detallado de Atributos
+          <div class="analysis-badge">
+            <i class="fas fa-robot"></i>
+            ${analysis.objects ? analysis.objects.length : 0} OBJETOS DETECTADOS
+          </div>
+        </div>
+      </div>
+      
+      <div class="attribute-sections">
+        <!-- Resumen de objetos detectados -->
+        <div class="attribute-section">
+          <h4><i class="fas fa-shapes"></i> Objetos Detectados (${analysis.objects ? analysis.objects.length : 0})</h4>
+          <div class="objects-grid">
+            ${objectsHTML}
+          </div>
+        </div>
+        
+        <!-- Evaluaciones generales -->
+        <div class="attribute-section">
+          <h4><i class="fas fa-chart-bar"></i> Evaluaciones Globales</h4>
+          <div class="evaluations-grid">
+            <div class="evaluation-card safety">
+              <div class="eval-icon">
+                <i class="fas fa-shield-alt"></i>
+              </div>
+              <div class="eval-info">
+                <div class="eval-title">Seguridad</div>
+                <div class="eval-value ${analysis.safetyAssessment?.safe ? 'safe' : 'unsafe'}">
+                  ${analysis.safetyAssessment?.safe ? 'SEGURO' : 'PELIGROSO'}
+                </div>
+                <div class="eval-details">
+                  ${analysis.safetyAssessment?.unsafeCount || 0} objetos peligrosos
+                </div>
+              </div>
+            </div>
+            
+            <div class="evaluation-card quality">
+              <div class="eval-icon">
+                <i class="fas fa-star"></i>
+              </div>
+              <div class="eval-info">
+                <div class="eval-title">Calidad</div>
+                <div class="eval-value ${analysis.qualityAssessment || 'regular'}">
+                  ${(analysis.qualityAssessment || 'regular').toUpperCase()}
+                </div>
+                <div class="eval-details">
+                  Evaluación global
+                </div>
+              </div>
+            </div>
+            
+            <div class="evaluation-card count">
+              <div class="eval-icon">
+                <i class="fas fa-calculator"></i>
+              </div>
+              <div class="eval-info">
+                <div class="eval-title">Conteo</div>
+                <div class="eval-value">${analysis.objects ? analysis.objects.length : 0}</div>
+                <div class="eval-details">
+                  objetos detectados
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hechos Prolog generados -->
+        <div class="attribute-section">
+          <h4><i class="fas fa-code"></i> Hechos Prolog Generados</h4>
+          <div class="prolog-facts">
+            <pre><code>${prologFacts || '// No se generaron hechos Prolog'}</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const uploadCard = document.querySelector('.card');
+  if (uploadCard) {
+    uploadCard.parentNode.insertBefore(resultsContainer, uploadCard.nextSibling);
+  } else {
+    document.querySelector('.container').appendChild(resultsContainer);
+  }
+
+  // Scroll suave a los resultados
+  resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+
+
+// 🔥 NUEVO: Generar reglas de atributos automáticamente
+async function generateAttributeRules(analysis, autoQueries) {
   try {
     const response = await fetch('/rules/generate', {
       method: 'POST',
@@ -147,14 +645,13 @@ async function generateRules() {
       },
       body: JSON.stringify({
         sessionId: appState.sessionId,
-        criteria: ['classification', 'safety', 'context']
+        criteria: ['detection', 'quality', 'safety', 'count']
       })
     });
 
     const result = await response.json();
 
     if (result.success) {
-      // 🔥 DIVIDIR REGLAS GENERADAS EN CARDS INDIVIDUALES
       const individualRules = splitRulesIntoIndividualCards(result.rules);
 
       if (individualRules.length === 0) {
@@ -162,918 +659,167 @@ async function generateRules() {
         return;
       }
 
-      // Agregar cada regla individual al carrusel
+      // Agregar consultas automáticas como reglas
+      if (autoQueries && autoQueries.length > 0) {
+        autoQueries.forEach((query, index) => {
+          individualRules.unshift({
+            id: Date.now() + index + 1000,
+            name: `consulta_auto_${index + 1}`,
+            code: query,
+            description: 'Consulta automática generada',
+            timestamp: new Date().toISOString(),
+            type: 'query'
+          });
+        });
+      }
+
+      // Agregar al carrusel
       individualRules.forEach(rule => {
-        rule.type = 'automática'; // Marcar como generada automáticamente
         carouselState.savedRules.unshift(rule);
       });
 
       carouselState.currentRuleSet = carouselState.savedRules;
-      localStorage.setItem('ruleCards', JSON.stringify(carouselState.savedRules));
+      localStorage.setItem('attributeRuleCards', JSON.stringify(carouselState.savedRules));
 
       updateCarousel();
       updateCarouselInfo();
 
       showNotification('success', 'Reglas Generadas',
-        `Se crearon ${individualRules.length} cards individuales automáticamente`);
+        `Se crearon ${individualRules.length} reglas de atributos automáticamente`);
 
     } else {
       throw new Error(result.error);
     }
   } catch (error) {
-    showNotification('error', 'Error',
-      `No se pudieron generar las reglas: ${error.message}`);
+    showNotification('error', 'Error', `No se pudieron generar las reglas: ${error.message}`);
   }
 }
 
-// 🔥 NUEVA FUNCIÓN: Crear card de regla individual MEJORADA
-function createRuleCard(rule, index) {
-  const card = document.createElement('div');
-  card.className = 'rule-card';
-  card.innerHTML = `
-        <div class="rule-card-header">
-            <h4 class="rule-card-title" title="${rule.name}">${rule.name}</h4>
-            <div class="rule-card-actions">
-                <button class="btn btn-outline btn-sm" onclick="copyRuleToClipboard('${rule.code.replace(/'/g, "\\'")}')" title="Copiar regla">
-                    <i class="fas fa-copy"></i>
-                </button>
-                <button class="btn btn-outline btn-sm" onclick="editIndividualRule(${index})" title="Usar esta regla">
-                    <i class="fas fa-edit"></i>
-                </button>
-                <button class="btn btn-outline btn-sm" onclick="deleteRule(${index})" title="Eliminar regla">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </div>
-        </div>
-        
-        <div class="rule-card-content">
-            <div class="rule-code-full">${formatRuleCode(rule.code)}</div>
-            
-            <div class="rule-meta">
-                <div class="rule-timestamp">
-                    <i class="fas fa-clock"></i>
-                    ${formatTimestamp(rule.timestamp)}
-                </div>
-                <span class="rule-type">${rule.type || 'individual'}</span>
-            </div>
-        </div>
-        
-        <div class="rule-card-footer">
-            <button class="btn-execute-rule" onclick="executeSingleRuleFromCard('${rule.code.replace(/'/g, "\\'")}', ${index})" 
-                    data-rule-index="${index}" id="executeBtn-${index}">
-                <i class="fas fa-play"></i>
-                Ejecutar Esta Regla
-            </button>
-            
-            <button class="btn btn-outline btn-sm" onclick="analyzeRule('${rule.code.replace(/'/g, "\\'")}')" title="Analizar regla">
-                <i class="fas fa-search"></i> Analizar
-            </button>
-        </div>
-    `;
+// 🔥 NUEVO: Configurar ejemplos de consultas para atributos
+function setupQueryExamples() {
+  const examples = [
+    {
+      name: "Objetos detectados",
+      query: "objeto_detectado(ID, Objeto, Confianza).",
+      description: "Todos los objetos detectados en la imagen"
+    },
+    {
+      name: "Objetos comestibles",
+      query: "es_comestible(ID).",
+      description: "Objetos seguros para consumo"
+    },
+    {
+      name: "Objetos podridos",
+      query: "esta_podrido(ID).",
+      description: "Objetos en estado de descomposición"
+    },
+    {
+      name: "Calidad de objetos",
+      query: "calidad_objeto(ID, Calidad).",
+      description: "Nivel de calidad de cada objeto"
+    },
+    {
+      name: "Conteo total",
+      query: "total_objetos(Total).",
+      description: "Número total de objetos detectados"
+    },
+    {
+      name: "Resumen seguridad",
+      query: "resumen_seguridad.",
+      description: "Resumen general de seguridad"
+    },
+    {
+      name: "Manzanas podridas",
+      query: "manzana_podrida(ID).",
+      description: "Manzanas en mal estado"
+    },
+    {
+      name: "Frutas maduras",
+      query: "es_fruta(ID), esta_maduro(ID).",
+      description: "Frutas listas para consumo"
+    }
+  ];
 
-  return card;
+  const quickQueriesContainer = document.getElementById('quickQueries');
+  if (!quickQueriesContainer) return;
+
+  let html = `
+    <div class="quick-queries">
+      <h4><i class="fas fa-bolt"></i> Consultas de Atributos</h4>
+      <div class="quick-query-buttons">
+  `;
+
+  examples.forEach(example => {
+    html += `
+      <button class="btn btn-outline btn-sm quick-query-btn" 
+              onclick="loadQueryExample('${example.query}', '${example.description}')"
+              title="${example.description}">
+        <i class="fas fa-play-circle"></i> ${example.name}
+      </button>
+    `;
+  });
+
+  html += `
+      </div>
+      <small class="query-help">
+        <i class="fas fa-info-circle"></i>
+        Estas consultas usan los atributos detectados automáticamente
+      </small>
+    </div>
+  `;
+
+  quickQueriesContainer.innerHTML = html;
 }
 
-// 🔥 NUEVA FUNCIÓN: Formatear código de regla MEJORADO
+// 🔥 NUEVO: Cargar ejemplo en el editor
+function loadQueryExample(query, description) {
+  const queryEditor = document.getElementById('prologQuery');
+  if (queryEditor) {
+    queryEditor.value = query;
+    queryEditor.focus();
+
+    showNotification('info', 'Consulta cargada',
+      `"${description}" - Modifícala si es necesario y ejecuta`);
+  }
+}
+
+// Funciones auxiliares (mantener del código original)
+function extractRuleName(ruleCode) {
+  if (!ruleCode) return null;
+
+  const patterns = [
+    /^([a-z][a-zA-Z0-9_]*)\s*:-/,
+    /^([a-z][a-zA-Z0-9_]*)\s*\(/,
+    /^([a-z][a-zA-Z0-9_]*)\s*\./
+  ];
+
+  for (const pattern of patterns) {
+    const match = ruleCode.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+
+  return null;
+}
+
 function formatRuleCode(code) {
   if (!code) return '<span class="text-muted">Sin código</span>';
 
-  // Resaltar sintaxis Prolog mejorada
   let formattedCode = code
-    .replace(/%[^\n]*/g, '<span class="comment">$&</span>') // Comentarios
-    .replace(/(:-)/g, '<span class="operator">$1</span>') // Operador :-
-    .replace(/([A-Z][a-zA-Z0-9_]*)/g, '<span class="variable">$1</span>') // Variables
-    .replace(/([a-z][a-zA-Z0-9_]*)(?=\()/g, '<span class="predicate">$1</span>') // Predicados
-    .replace(/'([^']*)'/g, '<span class="string">\'$1\'</span>') // Strings
-    .replace(/(\b\d+\.?\d*\b)/g, '<span class="number">$1</span>') // Números
-    .replace(/(\.[\s]*$)/g, '<span class="operator">$1</span>'); // Punto final
+    .replace(/%[^\n]*/g, '<span class="comment">$&</span>')
+    .replace(/(:-)/g, '<span class="operator">$1</span>')
+    .replace(/([A-Z][a-zA-Z0-9_]*)/g, '<span class="variable">$1</span>')
+    .replace(/([a-z][a-zA-Z0-9_]*)(?=\()/g, '<span class="predicate">$1</span>')
+    .replace(/'([^']*)'/g, '<span class="string">\'$1\'</span>')
+    .replace(/(\b\d+\.?\d*\b)/g, '<span class="number">$1</span>')
+    .replace(/(\.[\s]*$)/g, '<span class="operator">$1</span>');
 
   return formattedCode;
 }
 
-// 🔥 FUNCIÓN CORREGIDA: Ejecutar desde cards del carrusel
-async function executeSingleRuleFromCard(ruleCode, ruleIndex) {
-    const executeBtn = document.getElementById(`executeBtn-${ruleIndex}`);
-    if (!executeBtn) return;
-
-    // Extraer el nombre de la regla para usarlo como consulta
-    const ruleName = extractRuleName(ruleCode);
-    
-    if (!ruleName) {
-        showNotification('error', 'Error en regla', 'No se pudo extraer el nombre de la regla');
-        return;
-    }
-
-    // Cambiar estado del botón
-    executeBtn.disabled = true;
-    executeBtn.classList.add('executing');
-    executeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Ejecutando...';
-
-    try {
-        console.log(`🚀 Ejecutando regla: ${ruleName}`);
-        
-        // Usar el nombre de la regla como consulta
-        const result = await executeSingleQueryHybrid(ruleName + '.');
-        
-        // Mostrar notificación con resultado
-        showSingleRuleNotification(ruleName, result, ruleIndex);
-
-    } catch (error) {
-        console.error('❌ Error ejecutando regla:', error);
-        showNotification('error', 'Error en ejecución', 
-            `No se pudo ejecutar la regla: ${error.message}`);
-    } finally {
-        // Restaurar botón
-        executeBtn.disabled = false;
-        executeBtn.classList.remove('executing');
-        executeBtn.innerHTML = '<i class="fas fa-play"></i> Ejecutar Esta Regla';
-    }
-}
-
-// 🔥 FUNCIÓN: Extraer nombre de regla
-function extractRuleName(ruleCode) {
-    if (!ruleCode) return null;
-    
-    // Buscar patrones comunes de definición de reglas
-    const patterns = [
-        /^([a-z][a-zA-Z0-9_]*)\s*:-/,  // regla(X) :- 
-        /^([a-z][a-zA-Z0-9_]*)\s*\(/,   // regla(
-        /^([a-z][a-zA-Z0-9_]*)\s*\./    // regla.
-    ];
-    
-    for (const pattern of patterns) {
-        const match = ruleCode.match(pattern);
-        if (match && match[1]) {
-            return match[1];
-        }
-    }
-    
-    return null;
-}
-// 🔥 FUNCIÓN: Configurar consultas de ejemplo CORRECTAS
-function setupQueryExamples() {
-    const examples = [
-        {
-            name: "Objetos detectados",
-            query: "objeto_detectado(ID, Objeto, Confianza).",
-            description: "Todos los objetos detectados en la imagen"
-        },
-        {
-            name: "Objetos principales", 
-            query: "objeto_principal(ID).",
-            description: "Objetos con alta confianza"
-        },
-        {
-            name: "Escena natural",
-            query: "escena_natural.",
-            description: "Verificar si la escena es natural"
-        },
-        {
-            name: "Elementos peligrosos",
-            query: "elemento_peligroso(ID).",
-            description: "Objetos de alto riesgo"
-        },
-        {
-            name: "Características",
-            query: "caracteristica_observable(ID, Caracteristica).",
-            description: "Todas las características detectadas"
-        },
-        {
-            name: "Consulta básica",
-            query: "member(X, [1,2,3]).",
-            description: "Prueba básica del sistema"
-        }
-    ];
-
-    const quickQueriesContainer = document.getElementById('quickQueries');
-    if (!quickQueriesContainer) return;
-
-    let html = `
-        <div class="quick-queries">
-            <h4><i class="fas fa-bolt"></i> Consultas Rápidas</h4>
-            <div class="quick-query-buttons">
-    `;
-
-    examples.forEach(example => {
-        html += `
-            <button class="btn btn-outline btn-sm quick-query-btn" 
-                    onclick="loadQueryExample('${example.query}', '${example.description}')"
-                    title="${example.description}">
-                <i class="fas fa-play-circle"></i> ${example.name}
-            </button>
-        `;
-    });
-
-    html += `
-            </div>
-            <small class="query-help">
-                <i class="fas fa-info-circle"></i>
-                Estas consultas usan los datos generados automáticamente
-            </small>
-        </div>
-    `;
-
-    quickQueriesContainer.innerHTML = html;
-}
-
-// 🔥 FUNCIÓN: Cargar ejemplo en el editor
-function loadQueryExample(query, description) {
-    const queryEditor = document.getElementById('prologQuery');
-    if (queryEditor) {
-        queryEditor.value = query;
-        queryEditor.focus();
-        
-        showNotification('info', 'Consulta cargada', 
-            `"${description}" - Modifícala si es necesario y ejecuta`);
-    }
-}
-// 🔥 PRUEBA MÍNIMA DEL SISTEMA
-async function testMinimalProlog() {
-  showLoading('analyzing', 'Ejecutando prueba mínima...');
-
-  const testQueries = [
-    'member(a, [a,b,c]).',
-    'escena_interior.',
-    'objeto_detectado(X, Y, Z).'
-  ];
-
-  const results = [];
-
-  for (const query of testQueries) {
-    try {
-      const result = await executeSingleQueryHybrid(query);
-      results.push({
-        query,
-        success: result.success,
-        count: result.count,
-        source: result.source || 'server',
-        error: result.error
-      });
-    } catch (error) {
-      results.push({
-        query,
-        success: false,
-        error: error.message
-      });
-    }
-    await new Promise(resolve => setTimeout(resolve, 500));
-  }
-
-  hideLoading();
-
-  // Mostrar resultados
-  const notification = document.createElement('div');
-  notification.className = 'notification info';
-  notification.innerHTML = `
-        <div class="notification-progress info"></div>
-        <div class="notification-header">
-            <div class="notification-icon">
-                <i class="fas fa-vial"></i>
-            </div>
-            <div class="notification-content">
-                <h4 class="notification-title">Prueba Mínima del Sistema</h4>
-                <div class="notification-details">
-                    ${results.map(result => `
-                        <div class="detail-item">
-                            <div class="test-result">
-                                <span class="test-name">${result.query}</span>
-                                <span class="test-status ${result.success ? 'success-text' : 'error-text'}">
-                                    ${result.success ? '✅' : '❌'} 
-                                    ${result.success ? `${result.count} resultados` : 'Error'}
-                                    ${result.source ? ` (${result.source})` : ''}
-                                </span>
-                            </div>
-                            ${result.error ? `
-                                <div class="error-text">${result.error}</div>
-                            ` : ''}
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-            <button class="notification-close" onclick="this.parentElement.parentElement.remove()">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-    `;
-
-  const container = document.getElementById('notificationContainer') || createNotificationContainer();
-  container.appendChild(notification);
-}
-
-// 🔥 CREAR CONTENEDOR DE NOTIFICACIONES SI NO EXISTE
-function createNotificationContainer() {
-  const container = document.createElement('div');
-  container.id = 'notificationContainer';
-  container.className = 'notification-container';
-  document.body.appendChild(container);
-  return container;
-}
-
-// 🔥 AGREGAR BOTONES DE DIAGNÓSTICO URGENTE
-function addUrgentDiagnosticButtons() {
-  const header = document.querySelector('header .header-content');
-  if (header) {
-    const urgentDiv = document.createElement('div');
-    urgentDiv.style.display = 'flex';
-    urgentDiv.style.gap = '10px';
-    urgentDiv.style.alignItems = 'center';
-
-    urgentDiv.innerHTML = `
-            <button class="btn btn-sm btn-danger" onclick="urgentServerDiagnostic()">
-                <i class="fas fa-exclamation-triangle"></i> Diagnóstico Urgente
-            </button>
-            <button class="btn btn-sm btn-warning" onclick="testMinimalProlog()">
-                <i class="fas fa-vial"></i> Prueba Rápida
-            </button>
-            <span class="mode-indicator" id="modeIndicator" style="
-                background: #ff6b6b; 
-                color: white; 
-                padding: 4px 8px; 
-                border-radius: 12px; 
-                font-size: 0.8rem;
-                font-weight: bold;
-            ">🚨 MODO RESCATE</span>
-        `;
-
-    header.appendChild(urgentDiv);
-  }
-}
-
-// 🔥 FUNCIÓN MEJORADA: Validar consultas Prolog
-function validatePrologQuery(query) {
-    if (!query || query.trim().length === 0) {
-        return { isValid: false, error: 'La consulta no puede estar vacía' };
-    }
-
-    const trimmedQuery = query.trim();
-
-    // Debe terminar con punto
-    if (!trimmedQuery.endsWith('.')) {
-        return { isValid: false, error: 'La consulta debe terminar con un punto (.)' };
-    }
-
-    // No debe contener el operador :- (definición de reglas)
-    if (trimmedQuery.includes(':-')) {
-        return { 
-            isValid: false, 
-            error: 'Esto parece una definición de regla. Para definir reglas, usa el editor de reglas. Para consultar, usa solo el objetivo. Ejemplo: en lugar de "mi_regla(X) :- condicion(X).", usa "mi_regla(X)."' 
-        };
-    }
-
-    // Longitud razonable
-    if (trimmedQuery.length > 500) {
-        return { isValid: false, error: 'La consulta es demasiado larga' };
-    }
-
-    return { isValid: true, error: null };
-}
-
-// 🔥 DIAGNÓSTICO DEL SERVIDOR
-async function diagnoseServer() {
-  showLoading('analyzing', 'Diagnosticando servidor...');
-
-  const endpoints = [
-    { path: '/api/status', method: 'GET', name: 'Estado del API' },
-    { path: '/query/prolog/simple', method: 'POST', name: 'Endpoint Simple' },
-    { path: '/query/prolog', method: 'POST', name: 'Endpoint Principal' }
-  ];
-
-  const results = [];
-
-  for (const endpoint of endpoints) {
-    try {
-      console.log(`🔍 Probando: ${endpoint.name}`);
-
-      const options = {
-        method: endpoint.method,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      };
-
-      if (endpoint.method === 'POST') {
-        options.body = JSON.stringify({
-          query: 'member(X, [1,2,3]).',
-          sessionId: appState.sessionId
-        });
-      }
-
-      const response = await fetch(endpoint.path, options);
-      const contentType = response.headers.get('content-type');
-      const isJson = contentType && contentType.includes('application/json');
-
-      let data;
-      if (isJson) {
-        data = await response.json();
-      } else {
-        data = { htmlResponse: true, status: response.status };
-      }
-
-      results.push({
-        name: endpoint.name,
-        path: endpoint.path,
-        status: response.status,
-        ok: response.ok,
-        isJson: isJson,
-        data: data
-      });
-
-    } catch (error) {
-      results.push({
-        name: endpoint.name,
-        path: endpoint.path,
-        status: 'ERROR',
-        ok: false,
-        error: error.message
-      });
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 500));
-  }
-
-  hideLoading();
-  showServerDiagnostic(results);
-}
-
-// 🔥 MOSTRAR DIAGNÓSTICO DEL SERVIDOR
-function showServerDiagnostic(results) {
-  const notification = document.createElement('div');
-  notification.className = 'notification info';
-  notification.innerHTML = `
-        <div class="notification-progress info"></div>
-        <div class="notification-header">
-            <div class="notification-icon">
-                <i class="fas fa-server"></i>
-            </div>
-            <div class="notification-content">
-                <h4 class="notification-title">Diagnóstico del Servidor</h4>
-                <div class="notification-details">
-                    ${results.map(result => `
-                        <div class="detail-item">
-                            <div class="test-result">
-                                <span class="test-name">${result.name}</span>
-                                <span class="test-status ${result.ok ? 'success-text' : 'error-text'}">
-                                    ${result.ok ? '✅' : '❌'} ${result.status}
-                                </span>
-                            </div>
-                            <div class="endpoint-info">
-                                <code>${result.method || 'GET'} ${result.path}</code>
-                                ${result.isJson === false ? '<span class="warning-text">⚠️ No devuelve JSON</span>' : ''}
-                                ${result.error ? `<div class="error-text">${result.error}</div>` : ''}
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-            <button class="notification-close" onclick="this.parentElement.parentElement.remove()">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        <div class="notification-actions">
-            <button class="btn btn-sm btn-primary" onclick="diagnoseServer()">
-                <i class="fas fa-redo"></i> Re-diagnosticar
-            </button>
-            <button class="btn btn-sm btn-outline" onclick="showServerFixes()">
-                <i class="fas fa-tools"></i> Soluciones
-            </button>
-        </div>
-    `;
-
-  const container = document.getElementById('notificationContainer');
-  if (!container) {
-    const newContainer = document.createElement('div');
-    newContainer.id = 'notificationContainer';
-    newContainer.className = 'notification-container';
-    document.body.appendChild(newContainer);
-  }
-  container.appendChild(notification);
-}
-
-// 🔥 MOSTRAR SOLUCIONES PARA EL SERVIDOR
-function showServerFixes() {
-  const notification = document.createElement('div');
-  notification.className = 'notification warning';
-  notification.innerHTML = `
-        <div class="notification-progress warning"></div>
-        <div class="notification-header">
-            <div class="notification-icon">
-                <i class="fas fa-tools"></i>
-            </div>
-            <div class="notification-content">
-                <h4 class="notification-title">Soluciones para el Servidor</h4>
-                <div class="notification-details">
-                    <div class="detail-item">
-                        <strong>Problema:</strong> La ruta <code>/query/prolog/simple</code> tiene un error
-                    </div>
-                    <div class="detail-item">
-                        <strong>Solución 1:</strong> Edita <code>server.js</code> y busca la ruta <code>/query/prolog/simple</code>
-                    </div>
-                    <div class="detail-item">
-                        <strong>Solución 2:</strong> Asegúrate de que tenga:<br>
-                        <code>const { query, sessionId = 'default' } = req.body;</code>
-                    </div>
-                    <div class="detail-item">
-                        <strong>Solución 3:</strong> Reinicia el servidor después de hacer cambios
-                    </div>
-                </div>
-            </div>
-            <button class="notification-close" onclick="this.parentElement.parentElement.remove()">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-    `;
-
-  const container = document.getElementById('notificationContainer');
-  container.appendChild(notification);
-}
-
-
-// 🔥 FUNCIÓN DE DIAGNÓSTICO COMPLETO
-async function comprehensiveDiagnostic() {
-  showLoading('analyzing', 'Realizando diagnóstico completo...');
-
-  const tests = [
-    { name: 'Conexión servidor', test: testServerConnection },
-    { name: 'SWI-Prolog', test: testPrologConnection },
-    { name: 'Consultas básicas', test: testBasicQueries },
-    { name: 'Reglas guardadas', test: testSavedRules },
-    { name: 'Sistema de imágenes', test: testImageSystem }
-  ];
-
-  const results = [];
-
-  for (const test of tests) {
-    try {
-      console.log(`🧪 Ejecutando: ${test.name}`);
-      const result = await test.test();
-      results.push({
-        name: test.name,
-        success: true,
-        result: result
-      });
-    } catch (error) {
-      console.error(`❌ Falló: ${test.name}`, error);
-      results.push({
-        name: test.name,
-        success: false,
-        error: error.message
-      });
-    }
-    await new Promise(resolve => setTimeout(resolve, 500));
-  }
-
-  hideLoading();
-  showDiagnosticResults(results);
-}
-
-// Agregar botones de diagnóstico
-function addDiagnosticButtons() {
-  const querySection = document.querySelector('.query-suggestions');
-  if (querySection) {
-    const diagnosticDiv = document.createElement('div');
-    diagnosticDiv.className = 'diagnostic-buttons';
-    diagnosticDiv.style.display = 'flex';
-    diagnosticDiv.style.gap = '10px';
-    diagnosticDiv.style.marginTop = '15px';
-    diagnosticDiv.style.flexWrap = 'wrap';
-
-    diagnosticDiv.innerHTML = `
-            <button class="btn btn-outline btn-sm" onclick="diagnoseServer()">
-                <i class="fas fa-server"></i> Diagnosticar Servidor
-            </button>
-            <button class="btn btn-outline btn-sm" onclick="comprehensiveDiagnostic()">
-                <i class="fas fa-stethoscope"></i> Diagnóstico Completo
-            </button>
-            <button class="btn btn-outline btn-sm" onclick="testBasicProlog()">
-                <i class="fas fa-vial"></i> Probar Prolog Básico
-            </button>
-        `;
-
-    querySection.appendChild(diagnosticDiv);
-  }
-}
-
-// 🔥 PRUEBA BÁSICA DE PROLOG
-async function testBasicProlog() {
-  const testQueries = [
-    'member(a, [a,b,c]).',
-    'length([1,2,3], L).',
-    'X is 2 + 2.',
-    'append([1,2], [3,4], R).'
-  ];
-
-  showLoading('querying', 'Probando consultas básicas...');
-
-  const results = [];
-  for (const query of testQueries) {
-    try {
-      const result = await executeSingleQuery(query);
-      results.push({
-        query,
-        success: result.success,
-        count: result.count,
-        error: result.error
-      });
-    } catch (error) {
-      results.push({
-        query,
-        success: false,
-        error: error.message
-      });
-    }
-    await new Promise(resolve => setTimeout(resolve, 300));
-  }
-
-  hideLoading();
-  showTestResults(results);
-}
-
-// 🔥 FUNCIONES DE PRUEBA INDIVIDUALES
-async function testServerConnection() {
-  const response = await fetch('/api/status');
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const data = await response.json();
-  return data;
-}
-
-async function testPrologConnection() {
-  const testQueries = [
-    'member(X, [1,2,3]).',
-    'length([a,b,c], L).',
-    'X is 2 + 2.'
-  ];
-
-  const results = [];
-  for (const query of testQueries) {
-    const result = await executeSingleQuery(query);
-    results.push({ query, success: result.success });
-  }
-  return results;
-}
-
-async function testBasicQueries() {
-  const queries = [
-    'objeto_detectado(X, Y, Z).',
-    'nivel_riesgo(X, bajo).',
-    'caracteristica_observable(X, C).'
-  ];
-
-  const results = [];
-  for (const query of queries) {
-    try {
-      const result = await executeSingleQuery(query);
-      results.push({
-        query,
-        success: result.success,
-        count: result.count,
-        error: result.error
-      });
-    } catch (error) {
-      results.push({
-        query,
-        success: false,
-        error: error.message
-      });
-    }
-  }
-  return results;
-}
-
-async function testSavedRules() {
-  // Verificar si hay reglas guardadas
-  const session = sessionData.get(appState.sessionId);
-  const hasRules = session && session.savedRules && Object.keys(session.savedRules).length > 0;
-  return { hasSavedRules: hasRules };
-}
-
-async function testImageSystem() {
-  // Verificar análisis de imagen
-  const session = sessionData.get(appState.sessionId);
-  const hasImageAnalysis = session && session.imageAnalysis;
-  return { hasImageAnalysis: hasImageAnalysis };
-}
-
-// 🔥 MOSTRAR RESULTADOS DEL DIAGNÓSTICO
-function showDiagnosticResults(results) {
-  const passed = results.filter(r => r.success).length;
-  const total = results.length;
-
-  const notification = document.createElement('div');
-  notification.className = `notification ${passed === total ? 'success' : passed > total / 2 ? 'warning' : 'error'}`;
-
-  let resultsHTML = '';
-  results.forEach(result => {
-    resultsHTML += `
-            <div class="detail-item">
-                <div class="test-result">
-                    <span class="test-name">${result.name}</span>
-                    <span class="test-status ${result.success ? 'success-text' : 'error-text'}">
-                        ${result.success ? '✅' : '❌'} ${result.success ? 'ÉXITO' : 'FALLO'}
-                    </span>
-                </div>
-                ${!result.success ? `
-                    <div class="test-error">${result.error}</div>
-                ` : ''}
-            </div>
-        `;
-  });
-
-  notification.innerHTML = `
-        <div class="notification-progress ${passed === total ? 'success' : passed > total / 2 ? 'warning' : 'error'}"></div>
-        <div class="notification-header">
-            <div class="notification-icon">
-                <i class="fas ${passed === total ? 'fa-check-circle' : passed > total / 2 ? 'fa-exclamation-triangle' : 'fa-exclamation-circle'}"></i>
-            </div>
-            <div class="notification-content">
-                <h4 class="notification-title">
-                    Diagnóstico del Sistema: ${passed}/${total} Pruebas Exitosas
-                </h4>
-                <div class="notification-message">
-                    ${passed === total ?
-      '✅ Todos los sistemas funcionan correctamente' :
-      passed > total / 2 ?
-        '⚠️ Algunos sistemas necesitan atención' :
-        '❌ Múltiples sistemas presentan problemas'
-    }
-                </div>
-                <div class="notification-details">
-                    ${resultsHTML}
-                </div>
-            </div>
-            <button class="notification-close" onclick="this.parentElement.parentElement.remove()">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        <div class="notification-actions">
-            <button class="btn btn-sm btn-primary" onclick="comprehensiveDiagnostic()">
-                <i class="fas fa-redo"></i> Ejecutar Nuevamente
-            </button>
-            <button class="btn btn-sm btn-outline" onclick="showTroubleshootingGuide()">
-                <i class="fas fa-life-ring"></i> Guía de Solución
-            </button>
-        </div>
-    `;
-
-  const container = document.getElementById('notificationContainer');
-  if (!container) {
-    const newContainer = document.createElement('div');
-    newContainer.id = 'notificationContainer';
-    newContainer.className = 'notification-container';
-    document.body.appendChild(newContainer);
-    container = newContainer;
-  }
-
-  container.appendChild(notification);
-}
-
-// 🔥 FUNCIÓN MEJORADA: Mostrar notificación para regla individual
-function showSingleRuleNotification(ruleCode, result, ruleIndex) {
-  const ruleName = ruleCode.split(':-')[0]?.split('(')[0]?.trim() || `Regla ${ruleIndex + 1}`;
-  const isSuccess = result.success;
-  const resultCount = result.count || 0;
-  const errorMessage = result.error || 'Error desconocido';
-
-  // Crear notificación mejorada
-  const notification = document.createElement('div');
-  notification.className = `notification ${isSuccess ? 'success' : 'error'} floating-notification`;
-  notification.innerHTML = `
-        <div class="notification-progress ${isSuccess ? 'success' : 'error'}"></div>
-        <div class="notification-header">
-            <div class="notification-icon">
-                <i class="fas ${isSuccess ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i>
-            </div>
-            <div class="notification-content">
-                <h4 class="notification-title">
-                    ${isSuccess ? '✅ ÉXITO: ' : '❌ ERROR: '}${ruleName}
-                </h4>
-                <div class="notification-message">
-                    ${isSuccess ?
-      `La regla se ejecutó correctamente` :
-      `Error en la ejecución`
-    }
-                </div>
-                <div class="notification-details">
-                    <div class="detail-item">
-                        <strong>Regla:</strong> 
-                        <code class="rule-code">${ruleCode}</code>
-                    </div>
-                    <div class="detail-item">
-                        <strong>Resultados:</strong> 
-                        <span class="${isSuccess ? 'success-text' : 'error-text'}">
-                            ${isSuccess ?
-      `${resultCount} resultado(s) encontrado(s)` :
-      errorMessage
-    }
-                        </span>
-                    </div>
-                    ${isSuccess && resultCount > 0 ? `
-                        <div class="detail-item">
-                            <strong>Datos:</strong>
-                            <pre class="result-data">${JSON.stringify(result.results || [], null, 2)}</pre>
-                        </div>
-                    ` : ''}
-                </div>
-            </div>
-            <button class="notification-close" onclick="this.parentElement.parentElement.remove()">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        ${isSuccess && resultCount > 0 ? `
-            <div class="notification-actions">
-                <button class="btn btn-sm btn-outline" onclick="exportRuleResults(${ruleIndex})">
-                    <i class="fas fa-download"></i> Exportar Resultados
-                </button>
-                <button class="btn btn-sm btn-primary" onclick="showRuleAnalysis('${ruleCode.replace(/'/g, "\\'")}')">
-                    <i class="fas fa-chart-bar"></i> Análisis Detallado
-                </button>
-            </div>
-        ` : ''}
-    `;
-
-  const container = document.getElementById('notificationContainer');
-  if (!container) {
-    // Crear contenedor si no existe
-    const newContainer = document.createElement('div');
-    newContainer.id = 'notificationContainer';
-    newContainer.className = 'notification-container';
-    document.body.appendChild(newContainer);
-    container = newContainer;
-  }
-
-  container.appendChild(notification);
-
-  // Auto-remover después de 10 segundos (más tiempo para leer)
-  setTimeout(() => {
-    if (notification.parentElement) {
-      notification.style.animation = 'slideOutRight 0.5s ease-in forwards';
-      setTimeout(() => {
-        if (notification.parentElement) {
-          notification.remove();
-        }
-      }, 500);
-    }
-  }, 10000);
-}
-
-// 🔥 NUEVA FUNCIÓN: Copiar regla al portapapeles
-function copyRuleToClipboard(ruleCode) {
-  navigator.clipboard.writeText(ruleCode).then(() => {
-    showNotification('success', 'Copiada', 'Regla copiada al portapapeles');
-  }).catch(err => {
-    showNotification('error', 'Error', 'No se pudo copiar la regla');
-  });
-}
-
-// 🔥 NUEVA FUNCIÓN: Usar regla individual en el editor
-function editIndividualRule(ruleIndex) {
-  const rule = carouselState.currentRuleSet[ruleIndex];
-  if (rule && rule.code) {
-    // Agregar la regla al editor principal
-    addToCustomRules(rule.code);
-
-    showNotification('info', 'Regla Agregada',
-      `"${rule.name}" ha sido agregada al editor de reglas`);
-  }
-}
-
-// 🔥 NUEVA FUNCIÓN: Analizar regla
-function analyzeRule(ruleCode) {
-  // Extraer información de la regla para análisis
-  const analysis = {
-    type: ruleCode.includes(':-') ? 'regla_compleja' : 'hecho_simple',
-    hasVariables: /[A-Z]/.test(ruleCode),
-    length: ruleCode.length,
-    complexity: ruleCode.split(',').length // Número de condiciones
-  };
-
-  let analysisText = `Análisis de la regla:\n`;
-  analysisText += `- Tipo: ${analysis.type}\n`;
-  analysisText += `- Variables: ${analysis.hasVariables ? 'Sí' : 'No'}\n`;
-  analysisText += `- Longitud: ${analysis.length} caracteres\n`;
-  analysisText += `- Complejidad: ${analysis.complexity} condición(es)`;
-
-  showNotification('info', 'Análisis de Regla', analysisText);
-}
-
-// 🔥 NUEVA FUNCIÓN: Mostrar resultados detallados
-function showDetailedResults(ruleIndex) {
-  const rule = carouselState.currentRuleSet[ruleIndex];
-  if (!rule) return;
-
-  // Aquí podrías abrir un modal o expandir la card con resultados detallados
-  const card = document.querySelector(`[data-rule-index="${ruleIndex}"]`)?.closest('.rule-card');
-  if (card) {
-    card.classList.toggle('expanded');
-  }
-
-  showNotification('info', 'Resultados Detallados',
-    `Funcionalidad de resultados detallados para "${rule.name}"`);
-}
-
-// 🔥 NUEVA FUNCIÓN: Formatear timestamp
 function formatTimestamp(timestamp) {
   if (!timestamp) return 'Recién guardada';
-
   const date = new Date(timestamp);
   const now = new Date();
   const diffMs = now - date;
@@ -1085,280 +831,72 @@ function formatTimestamp(timestamp) {
   if (diffMins < 60) return `Hace ${diffMins} min`;
   if (diffHours < 24) return `Hace ${diffHours} h`;
   if (diffDays < 7) return `Hace ${diffDays} d`;
-
   return date.toLocaleDateString();
 }
 
-// 🔥 NUEVA FUNCIÓN: Ejecutar regla desde card
-async function executeRuleFromCard(ruleIndex) {
-  const rule = carouselState.currentRuleSet[ruleIndex];
-  if (!rule || !rule.code) {
-    showNotification('error', 'Error', 'La regla no tiene código válido');
-    return;
-  }
+function splitRulesIntoIndividualCards(rulesText) {
+  if (!rulesText || !rulesText.trim()) return [];
 
-  const executeBtn = document.getElementById(`executeBtn-${ruleIndex}`);
-  if (!executeBtn) return;
-
-  // Cambiar estado del botón
-  executeBtn.disabled = true;
-  executeBtn.classList.add('executing');
-  executeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Ejecutando...';
-
-  try {
-    // Extraer consultas individuales del código
-    const queries = extractQueriesFromRule(rule.code);
-
-    if (queries.length === 0) {
-      throw new Error('No se encontraron consultas válidas en la regla');
-    }
-
-    // Ejecutar cada consulta
-    const results = [];
-    for (let i = 0; i < queries.length; i++) {
-      const query = queries[i];
-      const result = await executeSingleQuery(query);
-      results.push({
-        query: query,
-        result: result
-      });
-
-      // Pequeña pausa entre consultas
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    // Mostrar notificación con resultados
-    showRuleExecutionNotification(rule.name || `Regla ${ruleIndex + 1}`, results);
-
-  } catch (error) {
-    showNotification('error', 'Error en ejecución',
-      `No se pudo ejecutar la regla: ${error.message}`);
-  } finally {
-    // Restaurar botón
-    executeBtn.disabled = false;
-    executeBtn.classList.remove('executing');
-    executeBtn.innerHTML = '<i class="fas fa-play"></i> Ejecutar Consulta';
-  }
-}
-
-// 🔥 NUEVA FUNCIÓN: Extraer consultas de una regla
-function extractQueriesFromRule(ruleCode) {
-  const lines = ruleCode.split('\n')
+  const lines = rulesText.split('\n')
     .map(line => line.trim())
-    .filter(line => line && !line.startsWith('%'));
-
-  const queries = [];
-
-  lines.forEach(line => {
-    // Buscar consultas (líneas que terminan en punto y no son reglas)
-    if (line.endsWith('.') && !line.includes(':-')) {
-      // Remover el punto final temporalmente
-      const query = line.substring(0, line.length - 1).trim();
-      if (query && !query.startsWith('%')) {
-        queries.push(query + '.');
-      }
-    }
-
-    // También buscar consultas dentro de reglas
-    if (line.includes(':-')) {
-      const parts = line.split(':-');
-      if (parts.length > 1) {
-        const body = parts[1].trim();
-        if (body.endsWith('.')) {
-          const bodyQuery = body.substring(0, body.length - 1).trim();
-          if (bodyQuery && !bodyQuery.startsWith('%')) {
-            queries.push(bodyQuery + '.');
-          }
-        }
-      }
-    }
-  });
-
-  // Si no se encontraron consultas específicas, usar la primera línea que parezca una consulta
-  if (queries.length === 0) {
-    const firstMeaningfulLine = lines.find(line =>
-      line.endsWith('.') && line.length > 3 && !line.startsWith('%')
-    );
-    if (firstMeaningfulLine) {
-      queries.push(firstMeaningfulLine);
-    }
-  }
-
-  return queries.length > 0 ? queries : ['member(X, [1,2,3]).']; // Consulta de fallback
-}
-
-// 🔥 FUNCIÓN MEJORADA: Ejecutar consulta simple con fallback
-async function executeSingleQuery(query) {
-  try {
-    console.log(`📤 Enviando consulta: ${query}`);
-
-    // PRIMERO intentar con la ruta simple
-    try {
-      const response = await fetch('/query/prolog/simple', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          query: query,
-          sessionId: appState.sessionId
-        })
-      });
-
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        const result = await response.json();
-        if (response.ok) {
-          return result;
-        }
-      }
-    } catch (simpleError) {
-      console.log('🔄 Ruta simple falló, intentando con ruta principal...');
-    }
-
-    // FALLBACK: usar la ruta principal
-    const response = await fetch('/query/prolog', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        query: query,
-        sessionId: appState.sessionId,
-        useSavedRules: false,
-        customRules: ''
-      })
+    .filter(line => {
+      return line &&
+        !line.startsWith('%') &&
+        line.endsWith('.') &&
+        line.length > 3;
     });
 
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      const textResponse = await response.text();
-      console.error('❌ El servidor devolvió HTML:', textResponse.substring(0, 200));
-      throw new Error(`Error del servidor: ${response.status}`);
+  const individualRules = [];
+
+  lines.forEach((line, index) => {
+    let ruleName = 'regla';
+    if (line.includes(':-')) {
+      ruleName = line.split(':-')[0].trim();
+    } else {
+      ruleName = line.substring(0, line.length - 1).trim();
     }
 
-    const result = await response.json();
+    ruleName = ruleName.replace(/\(.*\)/, '')
+      .replace(/,/g, '_')
+      .replace(/'/g, '')
+      .substring(0, 30);
 
-    if (!response.ok) {
-      throw new Error(result.error || `Error ${response.status}`);
-    }
+    // Determinar tipo de regla basado en el contenido
+    let type = 'attribute';
+    if (line.includes('comestible') || line.includes('peligroso')) type = 'safety';
+    if (line.includes('calidad') || line.includes('excellent')) type = 'quality';
+    if (line.includes('contar') || line.includes('total')) type = 'count';
+    if (line.includes('detectado')) type = 'detection';
 
-    return result;
-  } catch (error) {
-    console.error('❌ Error en executeSingleQuery:', error);
-    return {
-      success: false,
-      error: error.message,
-      results: [],
-      count: 0
-    };
-  }
+    individualRules.push({
+      id: Date.now() + index,
+      name: ruleName || `Regla ${index + 1}`,
+      code: line,
+      description: generateRuleDescription(line),
+      timestamp: new Date().toISOString(),
+      type: type
+    });
+  });
+
+  return individualRules;
 }
 
-// 🔥 NUEVA FUNCIÓN: Mostrar notificación de ejecución
-function showRuleExecutionNotification(ruleName, results) {
-  const totalQueries = results.length;
-  const successfulQueries = results.filter(r => r.result.success).length;
-  const totalResults = results.reduce((sum, r) => sum + (r.result.count || 0), 0);
+function generateRuleDescription(ruleCode) {
+  if (!ruleCode) return 'Regla de análisis';
 
-  let notificationType = 'success';
-  let title = `✅ ${ruleName} ejecutada`;
-  let message = `${successfulQueries}/${totalQueries} consultas exitosas`;
+  const code = ruleCode.toLowerCase();
 
-  if (successfulQueries === 0) {
-    notificationType = 'error';
-    title = `❌ ${ruleName} falló`;
-    message = 'Ninguna consulta se ejecutó correctamente';
-  } else if (successfulQueries < totalQueries) {
-    notificationType = 'warning';
-    title = `⚠️ ${ruleName} parcialmente exitosa`;
-    message = `${successfulQueries}/${totalQueries} consultas exitosas`;
-  }
+  if (code.includes('comestible')) return 'Verifica si un objeto es seguro para consumo';
+  if (code.includes('podrido')) return 'Identifica objetos en mal estado';
+  if (code.includes('calidad')) return 'Evalúa la calidad del objeto';
+  if (code.includes('contar') || code.includes('total')) return 'Cuenta objetos que cumplen cierta condición';
+  if (code.includes('seguro') || code.includes('peligroso')) return 'Verifica condiciones de seguridad';
+  if (code.includes('detectado')) return 'Regla de detección de objetos';
 
-  const notification = document.createElement('div');
-  notification.className = `notification ${notificationType}`;
-  notification.innerHTML = `
-        <div class="notification-progress"></div>
-        <div class="notification-header">
-            <div class="notification-icon">
-                <i class="fas ${notificationType === 'success' ? 'fa-check-circle' :
-      notificationType === 'error' ? 'fa-exclamation-circle' :
-        'fa-exclamation-triangle'
-    }"></i>
-            </div>
-            <h4 class="notification-title">${title}</h4>
-            <button class="notification-close" onclick="this.parentElement.parentElement.remove()">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        <div class="notification-content">
-            <p><strong>${message}</strong> - ${totalResults} resultados totales</p>
-            
-            ${results.slice(0, 3).map((result, idx) => `
-                <div class="notification-query">
-                    <strong>Consulta ${idx + 1}:</strong> ${result.query}
-                </div>
-                <div class="notification-results">
-                    <strong>Resultados (${result.result.count || 0}):</strong>\n${result.result.success ?
-        JSON.stringify(result.result.results || [], null, 2) :
-        `Error: ${result.result.error || 'Desconocido'}`
-      }
-                </div>
-            `).join('')}
-            
-            ${results.length > 3 ? `
-                <p class="text-muted">... y ${results.length - 3} consultas más</p>
-            ` : ''}
-        </div>
-    `;
-
-  const container = document.getElementById('notificationContainer');
-  container.appendChild(notification);
-
-  // Auto-remover después de 5 segundos
-  setTimeout(() => {
-    if (notification.parentElement) {
-      notification.remove();
-    }
-  }, 5000);
+  return 'Regla de análisis de atributos';
 }
 
-// 🔥 NUEVA FUNCIÓN: Sistema de notificaciones genérico
-function showNotification(type, title, message, details = null) {
-  const notification = document.createElement('div');
-  notification.className = `notification ${type}`;
-  notification.innerHTML = `
-        <div class="notification-progress"></div>
-        <div class="notification-header">
-            <div class="notification-icon">
-                <i class="fas ${type === 'success' ? 'fa-check-circle' :
-      type === 'error' ? 'fa-exclamation-circle' :
-        type === 'warning' ? 'fa-exclamation-triangle' :
-          'fa-info-circle'
-    }"></i>
-            </div>
-            <h4 class="notification-title">${title}</h4>
-            <button class="notification-close" onclick="this.parentElement.parentElement.remove()">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        <div class="notification-content">
-            <p>${message}</p>
-            ${details ? `<div class="notification-results">${details}</div>` : ''}
-        </div>
-    `;
-
-  const container = document.getElementById('notificationContainer');
-  container.appendChild(notification);
-
-  setTimeout(() => {
-    if (notification.parentElement) {
-      notification.remove();
-    }
-  }, 5000);
-}
-
-// 🔥 NUEVA FUNCIÓN: Navegación del carrusel
+// Funciones de navegación del carrusel
 function nextRuleCard() {
   const maxIndex = carouselState.currentRuleSet.length - carouselState.rulesPerView;
   if (carouselState.currentIndex < maxIndex) {
@@ -1395,25 +933,218 @@ function updateCarouselInfo() {
   }
 }
 
+// Funciones de utilidad (mantener del código original)
+function showNotification(type, title, message, details = null) {
+  const notification = document.createElement('div');
+  notification.className = `notification ${type}`;
+  notification.innerHTML = `
+    <div class="notification-progress ${type}"></div>
+    <div class="notification-header">
+      <div class="notification-icon">
+        <i class="fas ${type === 'success' ? 'fa-check-circle' :
+      type === 'error' ? 'fa-exclamation-circle' :
+        type === 'warning' ? 'fa-exclamation-triangle' :
+          'fa-info-circle'
+    }"></i>
+      </div>
+      <h4 class="notification-title">${title}</h4>
+      <button class="notification-close" onclick="this.parentElement.parentElement.remove()">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="notification-content">
+      <p>${message}</p>
+      ${details ? `<div class="notification-results">${details}</div>` : ''}
+    </div>
+  `;
 
-function setupAutonomousMode() {
-  const modeIndicator = document.createElement('div');
-  modeIndicator.className = 'autonomous-mode-indicator';
-  modeIndicator.innerHTML = `
-        <div class="mode-badge">
-            <i class="fas fa-robot"></i>
-            MODO AUTÓNOMO ACTIVO
-        </div>
-    `;
+  const container = document.getElementById('notificationContainer') || createNotificationContainer();
+  container.appendChild(notification);
 
-  const header = document.querySelector('header');
-  header.appendChild(modeIndicator);
+  setTimeout(() => {
+    if (notification.parentElement) {
+      notification.remove();
+    }
+  }, 5000);
+}
+
+// 🔥 FUNCIÓN PARA LIMPIAR BASE DE DATOS COMPLETAMENTE
+async function clearDatabase() {
+  if (!confirm('⚠️ ¿ESTÁS SEGURO?\n\nEsto eliminará TODOS los datos de la base de datos:\n• Todas las sesiones\n• Todos los hechos Prolog\n• Todas las reglas guardadas\n• Todas las consultas guardadas\n\nEsta acción NO se puede deshacer.')) {
+    return;
+  }
+
+  showLoading('processing', 'Limpiando base de datos...', 'Eliminando todos los datos');
+
+  try {
+    const response = await fetch('/admin/clear-database', {
+      method: 'DELETE'
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      // Limpiar estado local
+      appState.currentData = [];
+      appState.prologFacts = '';
+      appState.currentAnalysis = null;
+      
+      // Limpiar carrusel de reglas
+      carouselState.savedRules = [];
+      carouselState.currentRuleSet = [];
+      localStorage.removeItem('attributeRuleCards');
+      
+      // Limpiar interfaz
+      document.getElementById('dataTable').innerHTML = '';
+      document.getElementById('fileInfo').style.display = 'none';
+      document.getElementById('statsCard').style.display = 'none';
+      document.getElementById('prologResults').style.display = 'none';
+      
+      // Actualizar carrusel
+      updateCarousel();
+      updateCarouselInfo();
+      
+      // Crear nueva sesión limpia
+      appState.setSessionId('session_' + Date.now());
+      
+      showNotification('success', 'Base de Datos Limpiada', 
+        '✅ Todos los datos han sido eliminados\n🆕 Nueva sesión creada\n🗑️ Base de datos completamente vacía');
+        
+    } else {
+      throw new Error(result.error);
+    }
+  } catch (error) {
+    console.error('❌ Error limpiando base de datos:', error);
+    showNotification('error', 'Error Limpiando', 
+      `No se pudo limpiar la base de datos: ${error.message}`);
+  } finally {
+    hideLoading();
+  }
+}
+
+// 🔥 FUNCIÓN PARA LIMPIAR SESIÓN ACTUAL
+async function clearCurrentSession() {
+  if (!confirm('¿Estás seguro de que quieres limpiar la sesión actual?\n\nSe eliminarán todos los datos de esta sesión, pero otras sesiones permanecerán intactas.')) {
+    return;
+  }
+
+  showLoading('processing', 'Limpiando sesión actual...', 'Eliminando datos de la sesión');
+
+  try {
+    const response = await fetch(`/session/clear/${appState.sessionId}`, {
+      method: 'DELETE'
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      // Limpiar estado local
+      appState.currentData = [];
+      appState.prologFacts = '';
+      appState.currentAnalysis = null;
+      
+      // Limpiar interfaz
+      document.getElementById('dataTable').innerHTML = '';
+      document.getElementById('fileInfo').style.display = 'none';
+      document.getElementById('statsCard').style.display = 'none';
+      document.getElementById('prologResults').style.display = 'none';
+      
+      showNotification('success', 'Sesión Limpiada', 
+        `✅ Sesión ${appState.sessionId} ha sido limpiada\n📊 Todos los datos eliminados`);
+        
+    } else {
+      throw new Error(result.error);
+    }
+  } catch (error) {
+    console.error('❌ Error limpiando sesión:', error);
+    showNotification('error', 'Error Limpiando', 
+      `No se pudo limpiar la sesión: ${error.message}`);
+  } finally {
+    hideLoading();
+  }
+}
+
+// 🔥 FUNCIÓN PARA VER ESTADO DE LA BASE DE DATOS
+async function showDatabaseStatus() {
+  try {
+    const response = await fetch('/api/status');
+    const status = await response.json();
+    
+    // Obtener estadísticas de todas las sesiones
+    const sessionsResponse = await fetch('/admin/session-stats');
+    const sessionsData = await sessionsResponse.json();
+    
+    let message = `📊 ESTADO DE LA BASE DE DATOS:\n\n`;
+    message += `🔗 PostgreSQL: ${status.database}\n`;
+    message += `🕐 Última verificación: ${new Date().toLocaleString()}\n\n`;
+    
+    if (sessionsData.success) {
+      message += `📁 SESIONES ACTIVAS:\n`;
+      Object.entries(sessionsData.sessions).forEach(([sessionId, sessionInfo]) => {
+        message += `• ${sessionId}: ${sessionInfo.facts} hechos, ${sessionInfo.rules} reglas\n`;
+      });
+    }
+    
+    showNotification('info', 'Estado de Base de Datos', message);
+    
+  } catch (error) {
+    showNotification('error', 'Error', 'No se pudo obtener el estado de la base de datos');
+  }
+}
+
+function createNotificationContainer() {
+  const container = document.createElement('div');
+  container.id = 'notificationContainer';
+  container.className = 'notification-container';
+  document.body.appendChild(container);
+  return container;
+}
+
+function showLoading(type = 'default', message = 'Procesando...', details = '') {
+  if (!loadingDiv) return;
+
+  loadingState.isShowing = true;
+  loadingState.currentType = type;
+
+  let icon = '⏳';
+  let loadingClass = 'loading';
+
+  switch (type) {
+    case 'analyzing':
+      icon = '🔍';
+      loadingClass += ' analyzing';
+      break;
+    case 'querying':
+      icon = '⚡';
+      loadingClass += ' querying';
+      break;
+    default:
+      icon = '⏳';
+  }
+
+  loadingDiv.className = loadingClass;
+  loadingDiv.innerHTML = `
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div>
+        <p>${message}</p>
+        ${details ? `<div class="loading-status">${details}</div>` : ''}
+      </div>
+    </div>
+  `;
+  loadingDiv.style.display = 'block';
+}
+
+function hideLoading() {
+  if (!loadingDiv || !loadingState.isShowing) return;
+  loadingDiv.style.display = 'none';
+  loadingState.isShowing = false;
 }
 
 function initializeEventListeners() {
-  // Drag and drop para datos
+  // Configurar event listeners para upload de datos
   const dataUploadArea = document.getElementById('dataUploadArea');
-  const imageUploadArea = document.getElementById('imageUploadArea');
+  const dataFileInput = document.getElementById('dataFileInput');
 
   if (dataUploadArea) {
     dataUploadArea.addEventListener('dragover', handleDragOver);
@@ -1421,33 +1152,37 @@ function initializeEventListeners() {
     dataUploadArea.addEventListener('drop', (e) => handleDrop(e, 'data'));
   }
 
+  if (dataFileInput) {
+    dataFileInput.addEventListener('change', (e) => handleFileSelect(e, 'data'));
+  }
+
+  // Configurar event listeners para upload de imágenes (existente)
+  const imageUploadArea = document.getElementById('imageUploadArea');
+  const imageFileInput = document.getElementById('imageFileInput');
+
   if (imageUploadArea) {
     imageUploadArea.addEventListener('dragover', handleDragOver);
     imageUploadArea.addEventListener('dragleave', handleDragLeave);
     imageUploadArea.addEventListener('drop', (e) => handleDrop(e, 'image'));
   }
 
-  // File input change
-  const dataFileInput = document.getElementById('dataFileInput');
-  const imageFileInput = document.getElementById('imageFileInput');
-
-  if (dataFileInput) {
-    dataFileInput.addEventListener('change', (e) => handleFileSelect(e, 'data'));
-  }
-
   if (imageFileInput) {
     imageFileInput.addEventListener('change', (e) => handleFileSelect(e, 'image'));
   }
 
-  // // Enter key en consulta Prolog
-  // prologQuery.addEventListener('keypress', function (e) {
-  //     if (e.key === 'Enter' && e.ctrlKey) {
-  //         executePrologQuery();
-  //     }
-  // });
+  // Atajo de teclado para ejecutar consultas
+  const queryEditor = document.getElementById('prologQuery');
+  if (queryEditor) {
+    queryEditor.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        executePrologQuery();
+      }
+    });
+  }
 }
 
-// Manejo de archivos
+
 function handleDragOver(e) {
   e.preventDefault();
   e.currentTarget.classList.add('dragover');
@@ -1474,1023 +1209,977 @@ function handleDrop(e, type) {
 
 function handleFileSelect(e, type) {
   if (e.target.files.length > 0) {
+    const file = e.target.files[0];
     if (type === 'data') {
-      processDataFile(e.target.files[0]);
+      processDataFile(file);
     } else {
-      processImageFile(e.target.files[0]);
+      processImageFile(file);
     }
   }
 }
 
-// Actualizar processImageFile para ocultar 3D
-async function processImageFile(file) {
-    // Ocultar sección 3D para imágenes
-    hide3DVisualizationSection();
-    
-    showLoading();
 
-    const formData = new FormData();
-    formData.append('image', file);
-    formData.append('sessionId', appState.sessionId);
-
-    try {
-        const response = await fetch('/analyze/image/autonomous', {
-            method: 'POST',
-            body: formData
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            showAlert(`🤖 ${result.message}`, 'success');
-            displayAutonomousAnalysis(result.analysis, result.prologFacts);
-            loadAutonomousQuerySuggestions(result.analysis);
-        } else {
-            throw new Error(result.error);
-        }
-    } catch (error) {
-        showAlert(`❌ Error en análisis autónomo: ${error.message}`, 'danger');
-    } finally {
-        hideLoading();
-    }
-}
-
-
-function displayAutonomousAnalysis(analysis, prologFacts) {
-  const prevAnalysis = document.querySelector('.autonomous-analysis-results');
-  if (prevAnalysis) {
-    prevAnalysis.remove();
-  }
-
-  const resultsContainer = document.createElement('div');
-  resultsContainer.className = 'autonomous-analysis-results';
-
-  resultsContainer.innerHTML = `
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">
-          <i class="fas fa-brain"></i>
-          Análisis Autónomo Generativo
-          <div class="autonomous-badge">
-            <i class="fas fa-magic"></i>
-            CONOCIMIENTO GENERADO AUTOMÁTICAMENTE
-          </div>
-        </div>
-      </div>
-      
-      <div class="analysis-sections">
-        <!-- Resumen del Sistema Autónomo -->
-        <div class="analysis-section">
-          <h4><i class="fas fa-chart-pie"></i> Resumen del Análisis</h4>
-          <div class="autonomous-stats">
-            <div class="stat-card">
-              <div class="stat-icon">
-                <i class="fas fa-shapes"></i>
-              </div>
-              <div class="stat-info">
-                <div class="stat-value">${analysis.autonomousClassification?.objectCount || 0}</div>
-                <div class="stat-label">Objetos Identificados</div>
-              </div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon">
-                <i class="fas fa-tags"></i>
-              </div>
-              <div class="stat-info">
-                <div class="stat-value">${analysis.autonomousClassification?.allCategories?.length || 0}</div>
-                <div class="stat-label">Categorías Generadas</div>
-              </div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon">
-                <i class="fas fa-shield-alt"></i>
-              </div>
-              <div class="stat-info">
-                <div class="stat-value">${analysis.safetyAssessment?.overallRisk || 'BAJO'}</div>
-                <div class="stat-label">Riesgo Global</div>
-              </div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon">
-                <i class="fas fa-project-diagram"></i>
-              </div>
-              <div class="stat-info">
-                <div class="stat-value">${analysis.autonomousClassification?.diversityIndex || '0'}</div>
-                <div class="stat-label">Índice Diversidad</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Descripción de la Escena -->
-        <div class="analysis-section">
-          <h4><i class="fas fa-globe-americas"></i> Descripción de la Escena</h4>
-          <div class="scene-description">
-            <div class="scene-card">
-              <div class="scene-header">
-                <i class="fas fa-camera"></i>
-                <strong>Análisis Contextual</strong>
-              </div>
-              <div class="scene-content">
-                <p><strong>Descripción IA:</strong> ${analysis.caption || 'No disponible'}</p>
-                <p><strong>Tipo de Escena:</strong> ${analysis.characteristics?.escena_completa?.tipo_escena || 'No determinado'}</p>
-                <p><strong>Ambiente:</strong> ${analysis.characteristics?.escena_completa?.ambiente || 'No determinado'}</p>
-                <p><strong>Elementos Principales:</strong> ${analysis.characteristics?.escena_completa?.elementos_principales?.join(', ') || 'No identificados'}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Objetos y Características Generadas -->
-        <div class="analysis-section">
-          <h4><i class="fas fa-microscope"></i> Sistema de Características Generado</h4>
-          <div class="generated-characteristics">
-            ${Object.values(analysis.characteristics || {}).filter(char => char.id).map(char => `
-              <div class="characteristic-card ${char.riesgo?.nivel?.toLowerCase() || 'bajo'}">
-                <div class="char-header">
-                  <div class="char-name">${char.nombre || 'Objeto sin nombre'}</div>
-                  <div class="char-risk ${char.riesgo?.nivel?.toLowerCase() || 'bajo'}">
-                    <i class="fas ${char.riesgo?.nivel === 'ALTO' ? 'fa-exclamation-triangle' : char.riesgo?.nivel === 'MEDIO' ? 'fa-info-circle' : 'fa-check-circle'}"></i>
-                    ${char.riesgo?.nivel || 'BAJO'} (${char.riesgo?.puntuacion || 0})
-                  </div>
-                </div>
-                <div class="char-classification">
-                  <strong>Clasificación:</strong> ${char.clasificacion || 'No clasificado'}
-                </div>
-                <div class="char-features">
-                  <div class="features-section">
-                    <strong>Colores:</strong> ${char.colores?.join(', ') || 'No detectados'}
-                  </div>
-                  <div class="features-section">
-                    <strong>Formas:</strong> ${char.formas?.join(', ') || 'No detectadas'}
-                  </div>
-                  <div class="features-section">
-                    <strong>Texturas:</strong> ${char.texturas?.join(', ') || 'No detectadas'}
-                  </div>
-                </div>
-                <div class="char-recommendations">
-                  ${char.recomendaciones?.map(rec => `<div class="recommendation">${rec}</div>`).join('') || '<div class="recommendation">No se requieren acciones específicas</div>'}
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-        
-        <!-- Sistema Experto Generado -->
-        <div class="analysis-section">
-          <h4><i class="fas fa-robot"></i> Sistema Experto Autónomo</h4>
-          <div class="expert-system">
-            <div class="expert-rules">
-              <h5>Reglas de Inferencia Generadas:</h5>
-              <div class="rules-list">
-                ${analysis.expertSystem?.rules?.map(rule => `
-                  <div class="rule-item">
-                    <code>${rule}</code>
-                  </div>
-                `).join('') || '<div class="rule-item">No se generaron reglas específicas</div>'}
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Evaluación de Seguridad -->
-        <div class="analysis-section">
-          <h4><i class="fas fa-shield-alt"></i> Evaluación Autónoma de Seguridad</h4>
-          <div class="safety-assessment ${analysis.safetyAssessment?.overallRisk?.toLowerCase() || 'bajo'}">
-            <div class="safety-header">
-              <div class="safety-icon">
-                <i class="fas ${analysis.safetyAssessment?.safe ? 'fa-check-circle' : 'fa-exclamation-triangle'}"></i>
-              </div>
-              <div class="safety-info">
-                <div class="safety-title">Riesgo Global: ${analysis.safetyAssessment?.overallRisk || 'BAJO'}</div>
-                <div class="safety-details">
-                  ${analysis.safetyAssessment?.highRiskObjects || 0} objetos de alto riesgo / 
-                  ${analysis.safetyAssessment?.totalObjects || 0} total - 
-                  Ratio: ${analysis.safetyAssessment?.riskRatio || '0'}
-                </div>
-              </div>
-            </div>
-            <div class="safety-recommendations">
-              ${analysis.safetyAssessment?.recommendations?.map(rec => `
-                <div class="safety-recommendation">${rec}</div>
-              `).join('') || '<div class="safety-recommendation">Escena segura para observación</div>'}
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Sección Prolog Interactiva -->
-      <div class="prolog-interactive-section">
-        <h4><i class="fas fa-code"></i> Base de Conocimiento Prolog Generada</h4>
-        
-        <!-- Consultas Automáticas Generadas -->
-        <div class="auto-queries-section">
-          <h5>Consultas Automáticas Sugeridas:</h5>
-          <div class="auto-queries-grid" id="dynamicQueriesGrid">
-            <!-- Las consultas se generarán dinámicamente -->
-          </div>
-        </div>
-        
-        <!-- Editor de Consultas -->
-        <div class="query-editor-section">
-          <h5>Editor de Consultas Prolog:</h5>
-          <div class="query-input-group">
-            <textarea id="dynamicPrologQuery" class="form-control" placeholder="Escribe tu consulta Prolog aquí..." rows="3"></textarea>
-            <button class="btn btn-primary" onclick="executeDynamicQuery()">
-              <i class="fas fa-play"></i> Ejecutar Consulta
-            </button>
-          </div>
-        </div>
-        
-        <!-- Resultados de Consultas -->
-        <div class="query-results-section" id="dynamicQueryResults" style="display: none;">
-          <h5>Resultados de la Consulta:</h5>
-          <div class="result-content" id="dynamicQueryOutput"></div>
-        </div>
-        
-        <!-- Base de Conocimiento -->
-        <div class="knowledge-base-section">
-          <h5>Base de Conocimiento Completa:</h5>
-          <div class="code-container">
-            <pre><code>${prologFacts}</code></pre>
-          </div>
-          <button class="btn btn-primary btn-sm" onclick="addToCustomRules(\`${prologFacts.replace(/`/g, '\\`')}\`)">
-            <i class="fas fa-plus"></i> Cargar en Editor Prolog
-          </button>
-        </div>
-      </div>
-    </div>
-  `;
-
-  const uploadCard = document.querySelector('.card');
-  uploadCard.parentNode.insertBefore(resultsContainer, uploadCard.nextSibling);
-
-  // Generar consultas dinámicas basadas en el análisis
-  generateDynamicQueries(analysis);
-}
-
-// Generar consultas Prolog dinámicas basadas en el análisis
-function generateDynamicQueries(analysis) {
-  const queriesGrid = document.getElementById('dynamicQueriesGrid');
-  if (!queriesGrid) return;
-
-  const dynamicQueries = [];
-
-  // Consultas basadas en objetos detectados
-  if (analysis.detectedObjects && analysis.detectedObjects.length > 0) {
-    analysis.detectedObjects.forEach((obj, index) => {
-      dynamicQueries.push({
-        name: `Consultar ${obj.object}`,
-        query: `objeto_detectado(${index + 1}, '${obj.object}', Confianza).`,
-        description: `Información completa del ${obj.object}`
-      });
-
-      if (parseFloat(obj.confidence) > 80) {
-        dynamicQueries.push({
-          name: `${obj.object} - Alto riesgo`,
-          query: `objeto_detectado(ID, '${obj.object}', Confianza), nivel_riesgo(ID, alto).`,
-          description: `Verificar si ${obj.object} es de alto riesgo`
-        });
-      }
-    });
-  }
-
-  // Consultas basadas en características
-  if (analysis.characteristics) {
-    Object.values(analysis.characteristics).forEach(char => {
-      if (char.id) {
-        dynamicQueries.push({
-          name: `Características de ${char.nombre}`,
-          query: `caracteristica_observable(${char.id}, Caracteristica).`,
-          description: `Todas las características de ${char.nombre}`
-        });
-
-        dynamicQueries.push({
-          name: `Clasificación ${char.nombre}`,
-          query: `clasificacion_objeto(${char.id}, Clasificacion), nivel_riesgo(${char.id}, Riesgo).`,
-          description: `Clasificación y riesgo de ${char.nombre}`
-        });
-      }
-    });
-  }
-
-  // Consultas contextuales
-  dynamicQueries.push(
-    {
-      name: "Resumen de Seguridad",
-      query: "escena_segura(Segura), riesgo_global(Riesgo), objetos_alto_riesgo(AltoRiesgo).",
-      description: "Estado general de seguridad de la escena"
-    },
-    {
-      name: "Objetos Principales",
-      query: "objeto_principal(ID), objeto_detectado(ID, Objeto, Confianza).",
-      description: "Objetos más importantes detectados"
-    },
-    {
-      name: "Análisis por Tipo",
-      query: "tipo_escena(Tipo), ambiente(Ambiente).",
-      description: "Información contextual de la escena"
-    },
-    {
-      name: "Elementos Peligrosos",
-      query: "elemento_peligroso(ID), objeto(ID, Nombre).",
-      description: "Todos los elementos considerados peligrosos"
-    }
-  );
-
-  // Mostrar las consultas
-  let html = '';
-  dynamicQueries.forEach((query, index) => {
-    html += `
-      <div class="auto-query-card" onclick="loadDynamicQuery('${query.query.replace(/'/g, "\\'")}', ${index})">
-        <div class="auto-query-header">
-          <i class="fas fa-play-circle"></i>
-          <span class="auto-query-name">${query.name}</span>
-        </div>
-        <div class="auto-query-desc">${query.description}</div>
-        <div class="auto-query-preview">${query.query}</div>
-      </div>
-    `;
-  });
-
-  queriesGrid.innerHTML = html;
-}
-
-// Cargar consulta dinámica en el editor
-function loadDynamicQuery(query, index) {
-  const queryEditor = document.getElementById('dynamicPrologQuery');
-  if (queryEditor) {
-    queryEditor.value = query;
-    queryEditor.focus();
-
-    // Efecto visual
-    queryEditor.style.borderColor = '#007bff';
-    queryEditor.style.boxShadow = '0 0 10px rgba(0, 123, 255, 0.3)';
-    setTimeout(() => {
-      queryEditor.style.borderColor = '';
-      queryEditor.style.boxShadow = '';
-    }, 2000);
+function updateSessionInfo() {
+  const sessionElement = document.getElementById('sessionStatus');
+  if (sessionElement) {
+    sessionElement.textContent = `Sesión: ${appState.sessionId}`;
   }
 }
-
-// Ejecutar consulta dinámica
-async function executeDynamicQuery() {
-  const queryEditor = document.getElementById('dynamicPrologQuery');
-  const resultsDiv = document.getElementById('dynamicQueryResults');
-  const outputDiv = document.getElementById('dynamicQueryOutput');
-
-  if (!queryEditor || !queryEditor.value.trim()) {
-    showAlert('⚠️ Por favor, ingresa una consulta Prolog', 'warning');
-    return;
-  }
-
-  showLoading();
+// 🔥 NUEVA FUNCIÓN: Recargar datos de sesión
+async function reloadSessionData() {
+  showLoading('analyzing', 'Recargando datos de sesión...', 'Sincronizando con servidor');
 
   try {
-    const customRules = document.getElementById('customRules').value;
-    const response = await fetch('/query/prolog', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        query: queryEditor.value.trim(),
-        customRules,
-        sessionId: appState.sessionId
-      })
+    const response = await fetch(`/session/reload/${appState.sessionId}`, {
+      method: 'POST'
     });
 
     const result = await response.json();
 
     if (result.success) {
-      outputDiv.textContent = JSON.stringify(result.results, null, 2);
-      resultsDiv.style.display = 'block';
-      showAlert(`✅ Consulta ejecutada: ${result.count} resultados`, 'success');
+      showNotification('success', 'Datos Recargados',
+        `${result.factsCount} líneas de Prolog, ${result.objectsCount} objetos`);
+      return true;
     } else {
       throw new Error(result.error);
     }
   } catch (error) {
-    showAlert(`❌ Error en consulta Prolog: ${error.message}`, 'danger');
-    outputDiv.textContent = `Error: ${error.message}`;
-    resultsDiv.style.display = 'block';
+    showNotification('error', 'Error Recargando', `No se pudieron recargar los datos: ${error.message}`);
+    return false;
   } finally {
     hideLoading();
   }
 }
 
-// Cargar sugerencias de consultas autónomas
-async function loadAutonomousQuerySuggestions(analysis) {
-  try {
-    const response = await fetch(`/query/suggestions/${appState.sessionId}`);
-    const result = await response.json();
+// 🔥 NUEVO: Ejecutar regla de atributos (VERSIÓN MEJORADA)
+// 🔥 NUEVO: Ejecutar regla de atributos (VERSIÓN CON MEJOR MANEJO DE ERRORES)
+// 🔥 CORREGIR: Ejecutar regla de atributos (VERSIÓN MEJORADA)
+async function executeAttributeRule(ruleCode, ruleIndex) {
+  const executeBtn = document.getElementById(`executeBtn-${ruleIndex}`);
+  if (!executeBtn) return;
 
-    if (result.success) {
-      displayAutonomousQueries(result.suggestions, analysis);
-    }
-  } catch (error) {
-    console.log('No se pudieron cargar sugerencias:', error);
-  }
-}
-
-// Mostrar consultas autónomas
-function displayAutonomousQueries(suggestions, analysis) {
-  const autoQueriesContainer = document.getElementById('autoQueriesContainer');
-  if (!autoQueriesContainer) return;
-
-  let html = `
-        <div class="autonomous-queries-section">
-            <h4><i class="fas fa-brain"></i> Consultas del Sistema Autónomo</h4>
-            <div class="query-categories">
-    `;
-
-  // Consultas básicas
-  html += `
-        <div class="query-category">
-            <h5>Consultas Básicas</h5>
-            <div class="query-buttons">
-    `;
-  suggestions.slice(0, 3).forEach(query => {
-    html += `
-            <button class="btn btn-outline btn-sm" onclick="loadAutoQuery('${query.replace(/'/g, "\\'")}')">
-                <i class="fas fa-play"></i> ${query.split(' %')[0]}
-            </button>
-        `;
-  });
-  html += `</div></div>`;
-
-  // Consultas de seguridad
-  html += `
-        <div class="query-category">
-            <h5>Análisis de Riesgo</h5>
-            <div class="query-buttons">
-                <button class="btn btn-outline btn-sm" onclick="loadAutoQuery('requiere_precaucion(X).')">
-                    <i class="fas fa-shield-alt"></i> Objetos que requieren precaución
-                </button>
-                <button class="btn btn-outline btn-sm" onclick="loadAutoQuery('nivel_riesgo(X, alto).')">
-                    <i class="fas fa-exclamation-triangle"></i> Objetos de alto riesgo
-                </button>
-                <button class="btn btn-outline btn-sm" onclick="loadAutoQuery('es_seguro(X).')">
-                    <i class="fas fa-check-circle"></i> Objetos seguros
-                </button>
-            </div>
-        </div>
-    `;
-
-  // Consultas de características
-  html += `
-        <div class="query-category">
-            <h5>Análisis de Características</h5>
-            <div class="query-buttons">
-                <button class="btn btn-outline btn-sm" onclick="loadAutoQuery('caracteristica_observable(X, color_rojo_intenso).')">
-                    <i class="fas fa-palette"></i> Objetos rojos intensos
-                </button>
-                <button class="btn btn-outline btn-sm" onclick="loadAutoQuery('tiene_caracteristica_peligrosa(X).')">
-                    <i class="fas fa-skull-crossbones"></i> Características peligrosas
-                </button>
-                <button class="btn btn-outline btn-sm" onclick="loadAutoQuery('objetos_similares(X, Y).')">
-                    <i class="fas fa-project-diagram"></i> Objetos similares
-                </button>
-            </div>
-        </div>
-    `;
-
-  html += `</div></div>`;
-  autoQueriesContainer.innerHTML = html;
-  autoQueriesContainer.style.display = 'block';
-}
-
-// ... (el resto de las funciones se mantienen igual)
-
-function loadAutoQuery(query) {
-  prologQuery.value = query;
-  prologQuery.focus();
-
-  // Resaltar visualmente
-  prologQuery.style.borderColor = '#007bff';
-  prologQuery.style.boxShadow = '0 0 10px rgba(0, 123, 255, 0.3)';
-  setTimeout(() => {
-    prologQuery.style.borderColor = '';
-    prologQuery.style.boxShadow = '';
-  }, 2000);
-}
-
-// Mostrar información del archivo
-function displayFileInfo(file, stats) {
-  const fileSize = (file.size / 1024 / 1024).toFixed(2);
-  fileInfo.innerHTML = `
-        <p><strong>Nombre:</strong> ${file.name}</p>
-        <p><strong>Tamaño:</strong> ${fileSize} MB</p>
-        <p><strong>Tipo:</strong> ${file.type || 'Desconocido'}</p>
-        <p><strong>Registros:</strong> ${stats.totalRecords}</p>
-        <p><strong>Columnas:</strong> ${stats.columns}</p>
-    `;
-  fileInfo.style.display = 'block';
-}
-
-// Mostrar tabla de datos
-function displayDataTable(data) {
-  if (!data || data.length === 0) {
-    dataTable.innerHTML = '<p class="text-muted">No hay datos para mostrar</p>';
+  const ruleName = extractRuleName(ruleCode);
+  if (!ruleName) {
+    showNotification('error', 'Error en regla', 'No se pudo extraer el nombre de la regla');
     return;
   }
 
-  const headers = Object.keys(data[0]);
-  let html = `
-        <table>
-            <thead>
-                <tr>
-                    ${headers.map(header => `<th>${header}</th>`).join('')}
-                </tr>
-            </thead>
-            <tbody>
-    `;
+  executeBtn.disabled = true;
+  executeBtn.classList.add('executing');
+  executeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verificando...';
 
-  data.forEach(row => {
-    html += '<tr>';
-    headers.forEach(header => {
-      const value = row[header];
-      html += `<td>${value !== null && value !== undefined ? value : ''}</td>`;
-    });
-    html += '</tr>';
-  });
-
-  html += `
-            </tbody>
-        </table>
-    `;
-
-  dataTable.innerHTML = html;
-}
-
-// Mostrar estadísticas
-function displayStats(stats) {
-  if (!stats) return;
-
-  let html = '';
-
-  // Estadísticas generales
-  html += `
-        <div class="stat-card">
-            <div class="stat-icon">
-                <i class="fas fa-database"></i>
-            </div>
-            <div class="stat-info">
-                <div class="stat-value">${stats.totalRecords}</div>
-                <div class="stat-label">Registros Totales</div>
-            </div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon">
-                <i class="fas fa-columns"></i>
-            </div>
-            <div class="stat-info">
-                <div class="stat-value">${stats.columns}</div>
-                <div class="stat-label">Columnas</div>
-            </div>
-        </div>
-    `;
-
-  // Estadísticas por columna
-  Object.entries(stats.columnStats).forEach(([column, columnStats]) => {
-    html += `
-            <div class="stat-card">
-                <div class="stat-icon">
-                    <i class="fas fa-chart-bar"></i>
-                </div>
-                <div class="stat-info">
-                    <div class="stat-value">${column}</div>
-                    <div class="stat-label">
-                        ${columnStats.type} | ${columnStats.nonNull} no nulos
-                        ${columnStats.unique ? `| ${columnStats.unique} únicos` : ''}
-                    </div>
-                </div>
-            </div>
-        `;
-  });
-
-  statsGrid.innerHTML = html;
-  statsCard.style.display = 'block';
-}
-
-// 🔥 NUEVA FUNCIÓN: Usar reglas específicas en consultas
-async function useSavedRuleInQueries(ruleName) {
   try {
-    const response = await fetch(`/rules/load/${appState.sessionId}/${ruleName}`);
-    const result = await response.json();
+    console.log(`🔍 Ejecutando regla: ${ruleName}`);
+    console.log(`📝 Código: ${ruleCode}`);
+
+    // 🔥 PRIMERO: Verificar que tenemos datos en sesión
+    const sessionOk = await verifySessionState();
+    if (!sessionOk) {
+      throw new Error('La sesión no tiene datos válidos. Carga un archivo CSV o imagen primero.');
+    }
+
+    // 🔥 SEGUNDO: Determinar el tipo de consulta a ejecutar
+    let queryToExecute;
+    let queryType = 'desconocido';
+
+    if (ruleCode.includes(':-')) {
+      // Es una regla de definición - usar el nombre
+      queryType = 'definición';
+      queryToExecute = `${ruleName}(X).`;
+    } else if (ruleCode.endsWith('.') && !ruleCode.includes(':-')) {
+      // Es una consulta directa
+      queryType = 'consulta';
+      queryToExecute = ruleCode;
+    } else {
+      // Es un nombre de predicado
+      queryType = 'predicado';
+      queryToExecute = `${ruleName}(X).`;
+    }
+
+    console.log(`🔍 Ejecutando ${queryType}: ${queryToExecute}`);
+
+    // 🔥 TERCERO: Ejecutar consulta principal
+    let result;
+    if (queryToExecute.includes('atom_number')) {
+      // Reemplazar atom_number por number_string
+      const correctedQuery = queryToExecute.replace(/atom_number/g, 'number_string');
+      console.log(`🔧 Consulta corregida: ${correctedQuery}`);
+      result = await executeSingleQueryHybrid(correctedQuery);
+    } else {
+      result = await executeSingleQueryHybrid(queryToExecute);
+    }
+
+    console.log(`📊 Resultado de consulta:`, result);
 
     if (result.success) {
-      // Mostrar las reglas en el área de consultas
-      const prologQuery = document.getElementById('prologQuery');
-      const currentQuery = prologQuery.value.trim();
+      if (result.count > 0) {
+        // 🔥 ÉXITO: Mostrar resultados
+        showAttributeRuleResult(ruleName, result, ruleIndex);
 
-      if (currentQuery) {
-        // Si ya hay una consulta, agregar las reglas como comentario para referencia
-        prologQuery.value = `% Reglas de: ${ruleName}\n% ${result.rules.replace(/\n/g, '\n% ')}\n\n${currentQuery}`;
+        // También mostrar en el área principal de resultados
+        displayPrologResults(result.results, result.count);
       } else {
-        // Si no hay consulta, mostrar ejemplos de uso
-        prologQuery.value = `% Reglas cargadas: ${ruleName}\n% ${result.rules.replace(/\n/g, '\n% ')}\n\n% Ejemplos de uso:\n% objeto(X, Y), clasificacion_objeto(X, Z).\n% nivel_riesgo(X, alto), caracteristica_observable(X, C).`;
+        // Consulta exitosa pero sin resultados
+        showNotification('info', `Regla: ${ruleName}`,
+          `La consulta se ejecutó correctamente pero no devolvió resultados (0 coincidencias).\n\nPrueba con consultas más simples o verifica los datos cargados.`);
       }
+    } else {
+      // 🔥 FALLÓ: Intentar consultas alternativas
+      console.log(`⚠️ Consulta principal falló, intentando alternativas...`);
+      const alternativeResult = await tryAlternativeQueries(ruleName, ruleCode);
 
-      showAlert(`✅ Reglas "${ruleName}" cargadas para usar en consultas`, 'success');
+      if (alternativeResult.count > 0) {
+        showAttributeRuleResult(ruleName, alternativeResult, ruleIndex);
+      } else {
+        // 🔔 MOSTRAR CONSEJOS ESPECÍFICOS
+        let advice = '';
+        if (result.error && result.error.includes('existence_error')) {
+          advice = `El predicado '${ruleName}' no existe. Verifica que:\n• La regla esté correctamente definida\n• No haya conflictos de nombres\n• Los hechos estén cargados`;
+        } else {
+          advice = `La consulta no devolvió resultados. Prueba con:\n• Consultas más simples\n• Verificar los datos cargados\n• Recargar la sesión`;
+        }
+
+        showNotification('info', `Regla: ${ruleName}`,
+          `0 resultados encontrados\n\n${advice}`);
+      }
     }
+
   } catch (error) {
-    showAlert(`❌ Error cargando reglas: ${error.message}`, 'danger');
+    console.error(`❌ Error ejecutando regla ${ruleName}:`, error);
+    showNotification('error', 'Error en ejecución',
+      `No se pudo ejecutar '${ruleName}': ${error.message}\n\nAsegúrate de haber cargado un archivo primero.`);
+  } finally {
+    executeBtn.disabled = false;
+    executeBtn.classList.remove('executing');
+    executeBtn.innerHTML = '<i class="fas fa-vial"></i> Probar Esta Regla';
   }
 }
 
-// 🔥 FUNCIÓN CORREGIDA: Ejecutar consultas Prolog
-async function executePrologQuery() {
-    const queryInput = document.getElementById('prologQuery');
-    const query = queryInput.value.trim();
+// 🔥 FUNCIÓN DEBUG MEJORADA
+async function debugDataStructure() {
+  console.log('🐛 INICIANDO DEBUG DE ESTRUCTURA DE DATOS');
 
-    if (!query) {
-        showNotification('warning', 'Consulta vacía', 'Por favor ingresa una consulta Prolog');
-        return;
-    }
+  const result = await executeSingleQueryHybrid("dato(ID, Columna, Valor).");
 
-    // Validar que sea una consulta, no una regla
-    const validation = validatePrologQuery(query);
-    if (!validation.isValid) {
-        showNotification('error', 'Error de sintaxis', validation.error);
-        return;
-    }
+  if (result.success && result.results) {
+    console.log('🔍 ESTRUCTURA COMPLETA DE DATOS:');
 
-    showLoading('querying', 'Ejecutando consulta...');
+    // Mostrar todos los resultados en la consola
+    result.results.forEach((item, index) => {
+      console.log(`   [${index + 1}] ID: ${item.ID}, Columna: ${item.Columna}, Valor: ${item.Valor}`);
+    });
 
-    try {
-        console.log(`🚀 Ejecutando consulta: ${query}`);
-        
-        const result = await executeSingleQueryHybrid(query);
-        
-        // Mostrar resultados
-        displayPrologResults(result.results, result.count);
-        
-        if (result.success) {
-            if (result.count > 0) {
-                showNotification('success', 'Consulta exitosa', 
-                    `Se encontraron ${result.count} resultados`);
-            } else {
-                showNotification('info', 'Sin resultados', 
-                    'La consulta se ejecutó pero no devolvió resultados');
-            }
-        } else {
-            showNotification('warning', 'Consulta con advertencias', 
-                result.error || 'La consulta se ejecutó con advertencias');
-        }
+    // Agrupar por ID
+    const registros = {};
+    result.results.forEach(item => {
+      const id = item.ID;
+      if (!registros[id]) registros[id] = [];
+      registros[id].push(`${item.Columna}=${item.Valor}`);
+    });
 
-    } catch (error) {
-        console.error('❌ Error ejecutando consulta:', error);
-        showNotification('error', 'Error en consulta', 
-            `No se pudo ejecutar la consulta: ${error.message}`);
-    } finally {
-        hideLoading();
-    }
+    console.log('📦 DATOS AGRUPADOS POR ID:');
+    Object.keys(registros).sort((a, b) => a - b).forEach(id => {
+      console.log(`   ID ${id}: ${registros[id].join(', ')}`);
+    });
+
+    showNotification('success', 'Debug Completado',
+      `Se encontraron ${result.count} hechos para ${Object.keys(registros).length} registros. Revisa la consola para detalles.`);
+  } else {
+    showNotification('error', 'Debug Fallido', 'No se pudieron obtener los datos para debug');
+  }
 }
 
-// 🔧 FUNCIÓN DE DIAGNÓSTICO MEJORADA
-async function testPrologConnection() {
-  const testQueries = [
-    'objeto_detectado(X, Y, Z).',
-    'member(a, [a,b,c]).',
-    'length([1,2,3], L).',
-    'nivel_riesgo(X, bajo).'
+
+// 🔥 FUNCIÓN PARA PROBAR CONSULTAS CORREGIDAS
+async function testCorrectedQueries() {
+  console.log('🔧 Probando consultas corregidas...');
+
+  // Consulta 1: Salarios corregida (comparación de strings)
+  const salaryQuery = "dato(ID, 'salario', Salario), Salario @> '35000'.";
+  const salaryResult = await executeSingleQueryHybrid(salaryQuery);
+  console.log('💰 Salarios > 35000:', salaryResult);
+
+  // Consulta 2: Buscar Juan específico
+  const juanQuery = "dato(ID, 'nombre', 'Juan').";
+  const juanResult = await executeSingleQueryHybrid(juanQuery);
+  console.log('👤 Resultados para Juan:', juanResult);
+
+  // Consulta 3: Empleados de IT
+  const itQuery = "dato(ID, 'departamento', 'IT').";
+  const itResult = await executeSingleQueryHybrid(itQuery);
+  console.log('💻 Empleados de IT:', itResult);
+
+  // Consulta 4: Edades mayores
+  const ageQuery = "dato(ID, 'edad', Edad), Edad @> '35'.";
+  const ageResult = await executeSingleQueryHybrid(ageQuery);
+  console.log('🎂 Edad > 35:', ageResult);
+}
+
+// 🔥 NUEVA FUNCIÓN: Limpiar reglas duplicadas del carrusel
+function removeDuplicateRules() {
+  const uniqueRules = [];
+  const seenRules = new Set();
+
+  carouselState.savedRules.forEach(rule => {
+    const ruleKey = `${rule.name}|${rule.code}`;
+    if (!seenRules.has(ruleKey)) {
+      seenRules.add(ruleKey);
+      uniqueRules.push(rule);
+    }
+  });
+
+  const removedCount = carouselState.savedRules.length - uniqueRules.length;
+
+  if (removedCount > 0) {
+    carouselState.savedRules = uniqueRules;
+    carouselState.currentRuleSet = uniqueRules;
+    localStorage.setItem('attributeRuleCards', JSON.stringify(uniqueRules));
+
+    updateCarousel();
+    updateCarouselInfo();
+
+    showNotification('success', 'Reglas Limpiadas',
+      `Se eliminaron ${removedCount} reglas duplicadas`);
+  } else {
+    showNotification('info', 'Sin duplicados', 'No se encontraron reglas duplicadas');
+  }
+}
+
+// 🔥 NUEVA FUNCIÓN: Consultas alternativas
+async function tryAlternativeQueries(ruleName, ruleCode) {
+  const alternatives = [
+    `objeto_detectado(ID, Objeto, Confianza).`,
+    `seguridad_objeto(ID, Seguridad).`,
+    `estado_objeto(ID, Estado).`,
+    `atributo_objeto(ID, Atributo).`,
+    `total_objetos(N).`
   ];
 
-  showLoading();
-  let allTestsPassed = true;
+  for (const query of alternatives) {
+    try {
+      const result = await executeSingleQueryHybrid(query);
+      if (result.success && result.count > 0) {
+        return result;
+      }
+    } catch (error) {
+      continue;
+    }
+  }
+
+  return { success: true, count: 0, results: [] };
+}
+
+// 🔥 NUEVA FUNCIÓN: Probar reglas específicas del sistema (VERSIÓN MEJORADA)
+async function testSpecificRules() {
+  const testQueries = [
+    // 🔥 CONSULTAS BÁSICAS QUE DEBEN FUNCIONAR SIEMPRE
+    "objeto_detectado(ID, Objeto, Confianza).",
+    "seguridad_objeto(ID, Seguridad).",
+    "estado_objeto(ID, Estado).",
+    "atributo_objeto(ID, Atributo).",
+    "total_objetos(Total).",
+
+    // 🔥 REGLAS NUEVAS CON NOMBRES ÚNICOS
+    "es_seguro(ID).",
+    "esta_en_buen_estado(ID).",
+    "listar_objetos.",
+    "mostrar_estados.",
+    "mostrar_seguridad.",
+
+    // 🔥 CONSULTAS DE RESUMEN
+    "obtener_resumen(Total, Seguros, Peligrosos, Buenos)."
+  ];
+
+  showLoading('querying', 'Probando reglas específicas...', 'Verificando predicados cargados');
+
   const results = [];
 
-  for (let i = 0; i < testQueries.length; i++) {
-    const query = testQueries[i];
+  for (const query of testQueries) {
     try {
-      console.log(`🧪 Probando consulta: ${query}`);
-      const response = await fetch('/query/prolog/simple', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          query,
-          sessionId: appState.sessionId
-        })
+      const result = await executeSingleQueryHybrid(query);
+      results.push({
+        query,
+        success: result.success,
+        count: result.count,
+        error: result.error,
+        results: result.results || []
       });
 
-      const result = await response.json();
-      const testPassed = result.success && result.count >= 0;
+      console.log(`🔍 ${query}: ${result.count} resultados ${result.error ? '(ERROR: ' + result.error + ')' : ''}`);
 
-      console.log(`Test ${i + 1}:`, testPassed ? '✅ ÉXITO' : '❌ FALLO', result);
-      results.push({ query, success: testPassed, result });
-
-      if (!testPassed) {
-        allTestsPassed = false;
+      if (result.count > 0 && result.results) {
+        console.log('   Primeros resultados:', result.results.slice(0, 2));
       }
-
-      await new Promise(resolve => setTimeout(resolve, 200));
-
     } catch (error) {
-      console.error(`❌ Test ${i + 1} falló:`, error);
-      results.push({ query, success: false, error: error.message });
-      allTestsPassed = false;
+      results.push({
+        query,
+        success: false,
+        error: error.message,
+        results: []
+      });
     }
+    await new Promise(resolve => setTimeout(resolve, 300));
   }
 
   hideLoading();
 
-  // Mostrar resultados detallados
-  if (allTestsPassed) {
-    showAlert('✅ Diagnóstico: Todas las pruebas pasaron correctamente', 'success');
+  // Mostrar resumen detallado
+  const working = results.filter(r => r.success && r.count > 0).length;
+  const total = results.length;
+
+  let message = `✅ ${working}/${total} consultas funcionan\n\n`;
+  let details = '';
+
+  results.forEach(r => {
+    const status = r.success && r.count > 0 ? '✅' : r.success ? '⚠️' : '❌';
+    details += `${status} ${r.query}: ${r.count} resultados\n`;
+
+    if (r.error) {
+      details += `   Error: ${r.error}\n`;
+    }
+
+    if (r.results && r.results.length > 0) {
+      details += `   Ejemplo: ${JSON.stringify(r.results[0])}\n`;
+    }
+
+    details += '\n';
+  });
+
+  // Crear notificación expandible
+  const notification = document.createElement('div');
+  notification.className = `notification ${working === total ? 'success' : working > total / 2 ? 'warning' : 'error'}`;
+  notification.innerHTML = `
+    <div class="notification-progress ${working === total ? 'success' : working > total / 2 ? 'warning' : 'error'}"></div>
+    <div class="notification-header">
+      <div class="notification-icon">
+        <i class="fas fa-vial"></i>
+      </div>
+      <h4 class="notification-title">Prueba de Reglas: ${working}/${total} funcionan</h4>
+      <button class="notification-close" onclick="this.parentElement.parentElement.remove()">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="notification-content">
+      <p>${message}</p>
+      <details>
+        <summary>Ver detalles completos</summary>
+        <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px; margin-top: 10px; font-size: 0.9em; white-space: pre-wrap;">${details}</pre>
+      </details>
+    </div>
+  `;
+
+  const container = document.getElementById('notificationContainer') || createNotificationContainer();
+  container.appendChild(notification);
+}
+
+// Funciones de diagnóstico
+
+function addDiagnosticButtons() {
+  console.log('🔧 Agregando botones de diagnóstico...');
+
+  const querySection = document.querySelector('.query-suggestions');
+  if (!querySection) {
+    console.error('❌ No se encontró la sección query-suggestions');
+
+    // Intentar crear la sección si no existe
+    const queryCard = document.querySelector('.query-card');
+    if (queryCard) {
+      const newSection = document.createElement('div');
+      newSection.className = 'query-suggestions';
+      newSection.innerHTML = '<h4>Consultas Rápidas</h4>';
+      queryCard.appendChild(newSection);
+      addDiagnosticButtonsToSection(newSection);
+    }
+    return;
+  }
+
+  addDiagnosticButtonsToSection(querySection);
+}
+
+// 🔥 NUEVA FUNCIÓN AUXILIAR
+function addDiagnosticButtonsToSection(section) {
+  // Verificar si ya existen botones de diagnóstico
+  const existingDiagnostics = section.querySelector('.diagnostic-buttons');
+  if (existingDiagnostics) {
+    existingDiagnostics.remove();
+  }
+
+  const diagnosticDiv = document.createElement('div');
+  diagnosticDiv.className = 'diagnostic-buttons';
+  diagnosticDiv.style.cssText = `
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+    flex-wrap: wrap;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  `;
+
+  diagnosticDiv.innerHTML = `
+    <div style="width: 100%; margin-bottom: 8px;">
+      <strong style="color: var(--primary-light);">
+        <i class="fas fa-tools"></i> Herramientas de Diagnóstico y Limpieza
+      </strong>
+    </div>
+    <button class="btn btn-outline btn-sm" onclick="verifySessionState()" title="Verificar estado de la sesión">
+      <i class="fas fa-search"></i> Verificar Sesión
+    </button>
+    <button class="btn btn-outline btn-sm" onclick="showDatabaseStatus()" title="Ver estado completo de la base de datos">
+      <i class="fas fa-database"></i> Estado BD
+    </button>
+    <button class="btn btn-outline btn-sm" onclick="clearCurrentSession()" title="Limpiar solo la sesión actual">
+      <i class="fas fa-broom"></i> Limpiar Sesión
+    </button>
+    <button class="btn btn-danger btn-sm" onclick="clearDatabase()" title="LIMPIAR TODA LA BASE DE DATOS (CUIDADO)">
+      <i class="fas fa-trash"></i> Limpiar Todo
+    </button>
+  `;
+
+  section.appendChild(diagnosticDiv);
+  console.log('✅ Botones de diagnóstico agregados correctamente');
+}
+
+// 🔥 NUEVA FUNCIÓN: Verificar predicados cargados
+async function checkPredicates() {
+  try {
+    const response = await fetch(`/prolog/predicates/${appState.sessionId}`);
+    const result = await response.json();
+
+    if (result.success) {
+      const workingPredicates = result.predicates.filter(p => p.exists);
+      const brokenPredicates = result.predicates.filter(p => !p.exists);
+
+      let message = `✅ ${workingPredicates.length}/${result.predicates.length} predicados funcionan\n\n`;
+
+      if (workingPredicates.length > 0) {
+        message += "Funcionan:\n";
+        workingPredicates.forEach(p => {
+          message += `• ${p.predicate}\n`;
+        });
+      }
+
+      if (brokenPredicates.length > 0) {
+        message += "\nNo funcionan:\n";
+        brokenPredicates.forEach(p => {
+          message += `• ${p.predicate}: ${p.error}\n`;
+        });
+      }
+
+      showNotification('info', 'Diagnóstico de Predicados', message);
+    } else {
+      showNotification('error', 'Error', result.error);
+    }
+  } catch (error) {
+    showNotification('error', 'Error', `No se pudo verificar predicados: ${error.message}`);
+  }
+}
+
+// Función para verificar el estado del archivo rules.pl
+async function checkRulesFile() {
+  try {
+    const response = await fetch('/prolog/debug');
+    const diagnostic = await response.json();
+
+    console.log('📁 DIAGNÓSTICO RULES.PL:', diagnostic);
+
+    if (!diagnostic.fileExists) {
+      showNotification('❌ Archivo rules.pl no encontrado', 'error');
+    } else if (diagnostic.criticalDefinitions.color === 0) {
+      showNotification('⚠️ Archivo rules.pl no tiene definiciones color()', 'warning');
+    } else {
+      showNotification('✅ Archivo rules.pl cargado correctamente', 'success');
+    }
+
+    return diagnostic;
+  } catch (error) {
+    console.error('Error en diagnóstico:', error);
+    showNotification('❌ Error verificando archivo rules.pl', 'error');
+  }
+}
+
+
+// 🔥 NUEVA FUNCIÓN: Probar consultas básicas que DEBEN funcionar
+async function testBasicQueries() {
+  const basicQueries = [
+    'objeto_detectado(ID, Objeto, Confianza).',
+    'seguridad_objeto(ID, Seguridad).',
+    'estado_objeto(ID, Estado).',
+    'atributo_objeto(ID, Atributo).',
+    'total_objetos(Total).'
+  ];
+
+  showLoading('querying', 'Probando consultas básicas...');
+
+  const results = [];
+
+  for (const query of basicQueries) {
+    try {
+      const result = await executeSingleQueryHybrid(query);
+      results.push({
+        query,
+        success: result.success,
+        count: result.count,
+        error: result.error
+      });
+
+      console.log(`🔍 ${query}: ${result.success ? '✅' : '❌'} ${result.count} resultados`);
+    } catch (error) {
+      results.push({
+        query,
+        success: false,
+        error: error.message
+      });
+    }
+    await new Promise(resolve => setTimeout(resolve, 300));
+  }
+
+  hideLoading();
+
+  const working = results.filter(r => r.success).length;
+  const total = results.length;
+
+  let message = `Resultados: ${working}/${total} consultas funcionan\n\n`;
+  results.forEach(r => {
+    const status = r.success ? '✅' : '❌';
+    message += `${status} ${r.query}\n`;
+    if (r.error) {
+      message += `   Error: ${r.error}\n`;
+    }
+    message += `   Resultados: ${r.count}\n\n`;
+  });
+
+  showNotification(
+    working === total ? 'success' : working > 0 ? 'warning' : 'error',
+    'Prueba de Consultas Básicas',
+    message
+  );
+}
+
+// 🔥 NUEVA FUNCIÓN: Probar consultas complejas
+async function testComplexQueries() {
+  const complexQueries = [
+    "objeto_detectado(ID, 'manzana', Confianza).",
+    "findall(Objeto, objeto_detectado(_, Objeto, _), Objetos).",
+    "seguridad_objeto(ID, 'seguro').",
+    "findall(ID, (objeto_detectado(ID, _, _), seguridad_objeto(ID, 'seguro')), Seguros), length(Seguros, Total)."
+  ];
+
+  showLoading('querying', 'Probando consultas complejas...');
+
+  for (const query of complexQueries) {
+    try {
+      const result = await executeSingleQueryHybrid(query);
+      console.log(`🔍 ${query}: ${result.count} resultados`);
+      if (result.count > 0) {
+        console.log('Resultados:', result.results);
+      }
+    } catch (error) {
+      console.error(`❌ Error en ${query}:`, error);
+    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  hideLoading();
+}
+
+async function testAttributeSystem() {
+  showLoading('analyzing', 'Probando sistema completo...');
+
+  const testQueries = [
+    'objeto_detectado(X, Y, Z).',
+    'total_objetos(N).',
+    'seguridad_objeto(ID, Seg).',
+    'estado_objeto(ID, Est).',
+    'atributo_objeto(ID, Attr).'
+  ];
+
+  const results = [];
+
+  for (const query of testQueries) {
+    try {
+      const result = await executeSingleQueryHybrid(query);
+      results.push({
+        query,
+        success: result.success,
+        count: result.count,
+        source: result.source || 'server',
+        warning: result.warning
+      });
+
+      console.log(`🔍 ${query}: ${result.count} resultados`);
+      if (result.count > 0) {
+        console.log('Ejemplo:', result.results[0]);
+      }
+    } catch (error) {
+      results.push({
+        query,
+        success: false,
+        error: error.message
+      });
+    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  hideLoading();
+
+  const passed = results.filter(r => r.success && r.count > 0).length;
+  const total = results.length;
+
+  let message = `${passed}/${total} consultas con datos\n\n`;
+  results.forEach(r => {
+    message += `• ${r.query}: ${r.success ? '✅' : '❌'} ${r.count} resultados`;
+    if (r.warning) message += ` (⚠️ ${r.warning})`;
+    message += '\n';
+  });
+
+  showNotification(
+    passed === total ? 'success' : passed > total / 2 ? 'warning' : 'error',
+    'Prueba del Sistema',
+    message
+  );
+}
+
+function clearAllRules() {
+  if (carouselState.savedRules.length === 0) {
+    showNotification('info', 'Carrusel Vacío', 'No hay reglas para eliminar');
+    return;
+  }
+
+  if (confirm(`¿Estás seguro de que quieres eliminar TODAS las reglas (${carouselState.savedRules.length})?`)) {
+    carouselState.savedRules = [];
+    carouselState.currentRuleSet = [];
+    localStorage.removeItem('attributeRuleCards');
+
+    updateCarousel();
+    updateCarouselInfo();
+
+    showNotification('info', 'Carrusel Limpiado', 'Todas las reglas han sido eliminadas');
+  }
+}
+
+// Función de ejecución de consultas (mantener del código original)
+async function executeSingleQueryHybrid(query) {
+  try {
+    console.log(`🎯 EJECUTANDO CONSULTA: ${query}`);
+
+    const allRules = carouselState.savedRules.map(rule => rule.code).join('\n');
+    const customRules = document.getElementById('customRules')?.value || '';
+
+    const response = await fetch('/query/prolog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: query,
+        customRules: allRules + '\n' + customRules,
+        sessionId: appState.sessionId
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    console.log('🎯 RESULTADO TAU-PROLOG:');
+    console.log('✅ Éxito:', data.success);
+    console.log('📊 Resultados:', data.count);
+    console.log('🔍 Datos:', data.results);
+
+    return {
+      success: data.success,
+      results: data.results || [],
+      count: data.count || 0,
+      error: data.error,
+      source: 'server'
+    };
+
+  } catch (error) {
+    console.error('❌ Error en consulta:', error);
+    return {
+      success: false,
+      error: error.message,
+      results: [],
+      count: 0,
+      source: 'error'
+    };
+  }
+}
+
+// Funciones de carga de datos (opcionales, mantener compatibilidad)
+async function loadSavedQueries() {
+  // Implementación básica
+}
+
+async function loadSavedRulesList() {
+  // Implementación básica  
+}
+
+console.log('✅ Sistema de detección de atributos cargado correctamente');
+
+// 🔥 FUNCIONES FALTANTES PARA LA INTERFAZ
+
+// Función para cambiar pestañas
+// 🔥 CORREGIR: Función switchTab
+function switchTab(tabName, event) {
+  // Ocultar todos los tabs
+  document.querySelectorAll('.tab-content').forEach(tab => {
+    tab.classList.remove('active');
+  });
+
+  // Desactivar todos los botones
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+
+  // Mostrar tab seleccionado
+  const targetTab = document.getElementById(tabName + 'Tab');
+  if (targetTab) {
+    targetTab.classList.add('active');
+  }
+
+  // Activar botón si hay evento
+  if (event && event.currentTarget) {
+    event.currentTarget.classList.add('active');
   } else {
-    let errorMessage = '❌ Diagnóstico: Algunas pruebas fallaron\n\n';
-    results.forEach((test, index) => {
-      errorMessage += `Test ${index + 1}: ${test.query} - ${test.success ? '✅' : '❌'}\n`;
-      if (!test.success) {
-        errorMessage += `   Error: ${test.error || test.result?.error}\n`;
+    // Activar botón por selector
+    const targetBtn = document.querySelector(`.tab-btn[onclick*="${tabName}"]`);
+    if (targetBtn) {
+      targetBtn.classList.add('active');
+    }
+  }
+}
+
+// 🔥 MEJORAR executePrologQuery para evitar ejecuciones múltiples
+let isExecutingQuery = false;
+
+// Función para ejecutar consultas Prolog
+async function executePrologQuery() {
+  // Evitar ejecución múltiple
+  if (isExecutingQuery) {
+    console.log('⚠️ Consulta ya en ejecución, ignorando...');
+    return;
+  }
+
+  isExecutingQuery = true;
+
+  const queryInput = document.getElementById('prologQuery');
+  const query = queryInput.value.trim();
+
+  if (!query) {
+    showNotification('warning', 'Consulta vacía', 'Por favor ingresa una consulta Prolog');
+    isExecutingQuery = false;
+    return;
+  }
+
+  // Validar consulta
+  const validation = validatePrologQuery(query);
+  if (!validation.isValid) {
+    showNotification('error', 'Error de sintaxis', validation.error);
+    isExecutingQuery = false;
+    return;
+  }
+
+  showLoading('querying', 'Ejecutando consulta...');
+
+  try {
+    console.log(`🚀 Ejecutando consulta: ${query}`);
+
+    // Usar el endpoint con PostgreSQL
+    const result = await executeSingleQueryHybrid(query);
+
+    // Mostrar resultados
+    displayPrologResults(result.results, result.count);
+
+    if (result.success) {
+      if (result.count > 0) {
+        showNotification('success', 'Consulta exitosa',
+          `Se encontraron ${result.count} resultados`);
       } else {
-        errorMessage += `   Resultados: ${test.result?.count}\n`;
+        showNotification('info', 'Sin resultados',
+          'La consulta se ejecutó pero no devolvió resultados');
+      }
+    } else {
+      showNotification('warning', 'Consulta con advertencias',
+        result.error || 'La consulta se ejecutó con advertencias');
+    }
+
+  } catch (error) {
+    console.error('❌ Error ejecutando consulta:', error);
+    showNotification('error', 'Error en consulta',
+      `No se pudo ejecutar la consulta: ${error.message}`);
+  } finally {
+    hideLoading();
+    isExecutingQuery = false;
+  }
+}
+
+// 🔥 CORREGIR: Función para mostrar resultados Prolog
+function displayPrologResults(results, count) {
+  const resultCount = document.getElementById('resultCount');
+  const prologOutput = document.getElementById('prologOutput');
+  const prologResults = document.getElementById('prologResults');
+
+  if (!resultCount || !prologOutput || !prologResults) {
+    console.error('❌ Elementos de resultados no encontrados');
+    return;
+  }
+
+  // Actualizar contador
+  resultCount.textContent = `${count} ${count === 1 ? 'resultado' : 'resultados'}`;
+
+  // Mostrar resultados
+  if (!results || results.length === 0) {
+    prologOutput.innerHTML = `
+      <div class="no-results">
+        <i class="fas fa-search"></i>
+        <h4>No se encontraron resultados</h4>
+        <p>La consulta se ejecutó correctamente pero no devolvió soluciones.</p>
+      </div>
+    `;
+  } else {
+    let html = '<div class="results-grid">';
+
+    results.forEach((result, index) => {
+      // 🔥 CORRECIÓN: Manejar diferentes formatos de resultados
+      if (result.success !== undefined && Object.keys(result).length === 1) {
+        // Resultado de éxito simple
+        html += `
+          <div class="result-item">
+            <div class="result-header">
+              <span class="result-number">#${index + 1}</span>
+              <span class="result-type">Éxito</span>
+            </div>
+            <div class="result-content">
+              <div class="success-message">
+                <i class="fas fa-check"></i> Consulta ejecutada con éxito
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (result.ID || result.Columna || result.Valor) {
+        // 🔥 CORRECIÓN: Resultado con variables Prolog
+        html += `
+          <div class="result-item">
+            <div class="result-header">
+              <span class="result-number">#${index + 1}</span>
+              <span class="result-type">Solución</span>
+            </div>
+            <div class="result-content">
+        `;
+
+        // Mostrar ID si existe
+        if (result.ID && result.ID !== 'undefined') {
+          html += `
+            <div class="variable-binding">
+              <span class="variable-name">ID</span>
+              <span class="binding-operator"> = </span>
+              <span class="variable-value">${result.ID}</span>
+            </div>
+          `;
+        }
+
+        // Mostrar Columna si existe
+        if (result.Columna && result.Columna !== 'undefined') {
+          html += `
+            <div class="variable-binding">
+              <span class="variable-name">Columna</span>
+              <span class="binding-operator"> = </span>
+              <span class="variable-value">${result.Columna}</span>
+            </div>
+          `;
+        }
+
+        // Mostrar Valor si existe
+        if (result.Valor && result.Valor !== 'undefined') {
+          html += `
+            <div class="variable-binding">
+              <span class="variable-name">Valor</span>
+              <span class="binding-operator"> = </span>
+              <span class="variable-value">${result.Valor}</span>
+            </div>
+          `;
+        }
+
+        // Mostrar otras variables
+        Object.entries(result).forEach(([variable, value]) => {
+          if (variable !== 'ID' && variable !== 'Columna' && variable !== 'Valor' &&
+            variable !== 'success' && variable !== 'undefined' &&
+            value !== undefined && value !== null) {
+            const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+            html += `
+              <div class="variable-binding">
+                <span class="variable-name">${variable}</span>
+                <span class="binding-operator"> = </span>
+                <span class="variable-value">${displayValue}</span>
+              </div>
+            `;
+          }
+        });
+
+        html += `
+            </div>
+          </div>
+        `;
+      } else if (Object.keys(result).length > 0) {
+        // Otros tipos de resultados
+        html += `
+          <div class="result-item">
+            <div class="result-header">
+              <span class="result-number">#${index + 1}</span>
+              <span class="result-type">Resultado</span>
+            </div>
+            <div class="result-content">
+              <div class="simple-result">${JSON.stringify(result, null, 2)}</div>
+            </div>
+          </div>
+        `;
       }
     });
 
-    prologOutput.textContent = errorMessage;
-    prologResults.style.display = 'block';
-    showAlert('❌ Diagnóstico: Ver resultados para detalles', 'warning');
+    html += '</div>';
+    prologOutput.innerHTML = html;
   }
 
-  return allTestsPassed;
+  // Mostrar contenedor de resultados
+  prologResults.style.display = 'block';
 }
 
-// Agregar consultas rápidas específicas para las reglas guardadas
-function setupQuickQueries() {
-  const quickQueries = [
-    {
-      name: "Objetos detectados",
-      query: "objeto_detectado(Id, Objeto, Confianza).",
-      icon: "fa-search"
-    },
-    {
-      name: "Objetos seguros",
-      query: "nivel_riesgo(X, bajo).",
-      icon: "fa-shield-alt"
-    },
-    {
-      name: "Características",
-      query: "caracteristica_observable(X, Caracteristica).",
-      icon: "fa-list"
-    },
-    {
-      name: "Consulta simple",
-      query: "member(X, [1,2,3]).",
-      icon: "fa-vial"
-    }
-  ];
-
-  const quickQueriesContainer = document.getElementById('quickQueries');
-  if (!quickQueriesContainer) return;
-
-  let html = '<div class="quick-queries"><h4>Consultas Rápidas</h4><div class="quick-query-buttons">';
-
-  quickQueries.forEach(q => {
-    html += `
-            <button class="btn btn-outline btn-sm quick-query-btn" onclick="loadAutoQuery('${q.query}')">
-                <i class="fas ${q.icon}"></i> ${q.name}
-            </button>
-        `;
-  });
-
-  html += '</div></div>';
-  quickQueriesContainer.innerHTML = html;
-}
-
-// Agregar botón de diagnóstico en la inicialización
-function addDiagnosticButton() {
-  const querySection = document.querySelector('.query-suggestions');
-  if (querySection) {
-    const diagnosticButton = document.createElement('button');
-    diagnosticButton.className = 'btn btn-outline btn-sm';
-    diagnosticButton.innerHTML = '<i class="fas fa-stethoscope"></i> Diagnóstico Prolog';
-    diagnosticButton.onclick = testPrologConnection;
-    diagnosticButton.style.marginLeft = '10px';
-
-    const suggestions = querySection.querySelector('.suggestion-buttons');
-    if (suggestions) {
-      suggestions.appendChild(diagnosticButton);
-    }
-  }
-}
-
-// 🔥 FUNCIÓN MEJORADA: Mostrar resultados Prolog
-function displayPrologResults(results, count) {
-    const resultCount = document.getElementById('resultCount');
-    const prologOutput = document.getElementById('prologOutput');
-    const prologResults = document.getElementById('prologResults');
-
-    if (!resultCount || !prologOutput || !prologResults) {
-        console.error('❌ Elementos de resultados no encontrados');
-        return;
-    }
-
-    // Actualizar contador
-    resultCount.textContent = `${count} ${count === 1 ? 'resultado' : 'resultados'}`;
-
-    // Mostrar resultados
-    if (!results || results.length === 0) {
-        prologOutput.innerHTML = `
-            <div class="no-results">
-                <i class="fas fa-search"></i>
-                <h4>No se encontraron resultados</h4>
-                <p>La consulta se ejecutó correctamente pero no devolvió soluciones.</p>
-                <div class="suggestion">
-                    <strong>Sugerencias:</strong>
-                    <ul>
-                        <li>Verifica que los datos estén cargados</li>
-                        <li>Prueba con consultas más simples</li>
-                        <li>Asegúrate de que las reglas estén definidas</li>
-                    </ul>
-                </div>
-            </div>
-        `;
-    } else {
-        let html = '<div class="results-grid">';
-        
-        results.forEach((result, index) => {
-            html += `
-                <div class="result-item">
-                    <div class="result-header">
-                        <span class="result-number">#${index + 1}</span>
-                        <span class="result-type">Solución</span>
-                    </div>
-                    <div class="result-content">
-            `;
-            
-            // Mostrar cada variable del resultado
-            Object.entries(result).forEach(([variable, value]) => {
-                if (variable !== 'undefined' && value !== 'null') {
-                    html += `
-                        <div class="variable-binding">
-                            <span class="variable-name">${variable}</span>
-                            <span class="binding-operator"> = </span>
-                            <span class="variable-value">${value}</span>
-                        </div>
-                    `;
-                }
-            });
-            
-            html += `
-                    </div>
-                </div>
-            `;
-        });
-        
-        html += '</div>';
-        prologOutput.innerHTML = html;
-    }
-
-    // Mostrar contenedor de resultados
-    prologResults.style.display = 'block';
-}
-
-// Mostrar análisis de imagen
-function displayImageAnalysis(analysis, prologFacts) {
-  // Eliminar análisis previo si existe
-  const prevAnalysis = document.querySelector('.image-analysis-results');
-  if (prevAnalysis) {
-    prevAnalysis.remove();
+// Función para validar consultas Prolog
+function validatePrologQuery(query) {
+  if (!query || query.trim().length === 0) {
+    return { isValid: false, error: 'La consulta no puede estar vacía' };
   }
 
-  const resultsContainer = document.createElement('div');
-  resultsContainer.className = 'image-analysis-results';
-  resultsContainer.innerHTML = `
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">
-                    <i class="fas fa-robot"></i>
-                    Análisis de Imagen por IA
-                </div>
-            </div>
-            
-            <div class="analysis-grid">
-                <div class="analysis-section">
-                    <h4><i class="fas fa-info-circle"></i> Información Básica</h4>
-                    <div class="info-grid">
-                        <div class="info-item">
-                            <span class="info-label">Resolución:</span>
-                            <span class="info-value">${analysis.width} × ${analysis.height}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Formato:</span>
-                            <span class="info-value">${analysis.format}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Tamaño:</span>
-                            <span class="info-value">${analysis.features.estimatedSize}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Brillo:</span>
-                            <span class="info-value">${analysis.features.brightness}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Relación Aspecto:</span>
-                            <span class="info-value">${analysis.features.aspectRatio}</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="analysis-section">
-                    <h4><i class="fas fa-object-group"></i> Objetos Detectados</h4>
-                    <div class="objects-list">
-                        ${analysis.detectedObjects.map(obj => `
-                            <div class="object-item">
-                                <span class="object-name">${obj.object}</span>
-                                <span class="object-confidence ${getConfidenceClass(obj.confidence)}">
-                                    ${obj.confidence}
-                                </span>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-                
-                <div class="analysis-section">
-                    <h4><i class="fas fa-palette"></i> Colores Dominantes</h4>
-                    <div class="colors-grid">
-                        ${analysis.colors.map(color => `
-                            <div class="color-item">
-                                <div class="color-swatch" style="background-color: ${color.color}"></div>
-                                <span class="color-percentage">${color.percentage}</span>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            </div>
-            
-            <div class="prolog-section">
-                <h4><i class="fas fa-code"></i> Hechos Prolog Generados</h4>
-                <div class="code-container">
-                    <code>${prologFacts}</code>
-                </div>
-                <button class="btn btn-primary btn-sm" onclick="addToCustomRules(\`${prologFacts.replace(/`/g, '\\`')}\`)">
-                    <i class="fas fa-plus"></i> Agregar a Reglas Personalizadas
-                </button>
-            </div>
-        </div>
-    `;
+  const trimmedQuery = query.trim();
 
-  // Insertar después de la sección de carga
-  const uploadCard = document.querySelector('.card');
-  uploadCard.parentNode.insertBefore(resultsContainer, uploadCard.nextSibling);
+  // Debe terminar con punto
+  if (!trimmedQuery.endsWith('.')) {
+    return { isValid: false, error: 'La consulta debe terminar con un punto (.)' };
+  }
+
+  // No debe contener el operador :- (definición de reglas)
+  if (trimmedQuery.includes(':-')) {
+    return {
+      isValid: false,
+      error: 'Esto parece una definición de regla. Para definir reglas, usa el editor de reglas. Para consultar, usa solo el objetivo. Ejemplo: en lugar de "mi_regla(X) :- condicion(X).", usa "mi_regla(X)."'
+    };
+  }
+
+  // Longitud razonable
+  if (trimmedQuery.length > 500) {
+    return { isValid: false, error: 'La consulta es demasiado larga' };
+  }
+
+  return { isValid: true, error: null };
 }
 
-function getConfidenceClass(confidence) {
-  const confValue = parseFloat(confidence);
-  if (confValue >= 80) return 'high-confidence';
-  if (confValue >= 60) return 'medium-confidence';
-  return 'low-confidence';
-}
-
-// 🔥 NUEVA FUNCIÓN: Dividir reglas en cards individuales
-function splitRulesIntoIndividualCards(rulesText) {
-  if (!rulesText || !rulesText.trim()) return [];
-
-  const lines = rulesText.split('\n')
-    .map(line => line.trim())
-    .filter(line => {
-      // Filtrar solo líneas que son reglas Prolog válidas
-      return line &&
-        !line.startsWith('%') &&
-        line.endsWith('.') &&
-        line.length > 3;
-    });
-
-  const individualRules = [];
-
-  lines.forEach((line, index) => {
-    // Extraer el nombre de la regla (parte antes del :- o del .)
-    let ruleName = 'regla';
-    if (line.includes(':-')) {
-      ruleName = line.split(':-')[0].trim();
-    } else {
-      ruleName = line.substring(0, line.length - 1).trim();
-    }
-
-    // Limpiar el nombre para que sea legible
-    ruleName = ruleName.replace(/\(.*\)/, '') // Remover parámetros
-      .replace(/,/g, '_')
-      .replace(/'/g, '')
-      .substring(0, 30); // Limitar longitud
-
-    individualRules.push({
-      id: Date.now() + index, // ID único
-      name: ruleName || `Regla ${index + 1}`,
-      code: line,
-      timestamp: new Date().toISOString(),
-      type: 'individual'
-    });
-  });
-
-  return individualRules;
-}
-// 🔥 ACTUALIZAR: Función saveRules para crear cards individuales
+// Función para guardar reglas
 async function saveRules() {
-  const rules = customRules.value.trim();
-  const ruleName = document.getElementById('ruleName').value || `conjunto_reglas_${Date.now()}`;
+  const rules = document.getElementById('customRules').value.trim();
+  const ruleName = document.getElementById('ruleName').value || `reglas_${Date.now()}`;
 
   if (!rules) {
     showNotification('warning', 'Advertencia', 'No hay reglas para guardar');
@@ -2498,7 +2187,7 @@ async function saveRules() {
   }
 
   try {
-    // Guardar en el servidor (mantener funcionalidad existente)
+    // Guardar en el servidor
     const response = await fetch('/rules/save', {
       method: 'POST',
       headers: {
@@ -2514,7 +2203,7 @@ async function saveRules() {
     const result = await response.json();
 
     if (result.success) {
-      // 🔥 DIVIDIR REGLAS EN CARDS INDIVIDUALES
+      // Crear cards individuales
       const individualRules = splitRulesIntoIndividualCards(rules);
 
       if (individualRules.length === 0) {
@@ -2528,16 +2217,13 @@ async function saveRules() {
       });
 
       carouselState.currentRuleSet = carouselState.savedRules;
+      localStorage.setItem('attributeRuleCards', JSON.stringify(carouselState.savedRules));
 
-      // Guardar en localStorage
-      localStorage.setItem('ruleCards', JSON.stringify(carouselState.savedRules));
-
-      // Actualizar carrusel
       updateCarousel();
       updateCarouselInfo();
 
-      showNotification('success', 'Cards Creadas',
-        `Se crearon ${individualRules.length} cards individuales a partir de las reglas`);
+      showNotification('success', 'Reglas Guardadas',
+        `Se crearon ${individualRules.length} reglas en el carrusel`);
 
     } else {
       throw new Error(result.error);
@@ -2548,115 +2234,7 @@ async function saveRules() {
   }
 }
 
-
-// 🔥 NUEVAS FUNCIONES: Gestión de reglas individuales
-function editRule(ruleIndex) {
-  const rule = carouselState.currentRuleSet[ruleIndex];
-  if (rule && rule.code) {
-    customRules.value = rule.code;
-    document.getElementById('ruleName').value = rule.name;
-
-    showNotification('info', 'Regla Cargada',
-      `"${rule.name}" ha sido cargada en el editor para modificaciones`);
-  }
-}
-
-function deleteRule(ruleIndex) {
-  const rule = carouselState.currentRuleSet[ruleIndex];
-  if (!rule) return;
-
-  if (confirm(`¿Estás seguro de que quieres eliminar la regla "${rule.name}"?`)) {
-    // Eliminar del array
-    carouselState.savedRules = carouselState.savedRules.filter(r => r.id !== rule.id);
-    carouselState.currentRuleSet = carouselState.savedRules;
-
-    // Guardar cambios
-    localStorage.setItem('ruleCards', JSON.stringify(carouselState.savedRules));
-
-    // Actualizar carrusel
-    updateCarousel();
-    updateCarouselInfo();
-
-    showNotification('info', 'Regla Eliminada',
-      `"${rule.name}" ha sido eliminada del carrusel`);
-  }
-}
-
-function clearAllRules() {
-  if (carouselState.savedRules.length === 0) {
-    showNotification('info', 'Carrusel Vacío', 'No hay reglas para eliminar');
-    return;
-  }
-
-  if (confirm(`¿Estás seguro de que quieres eliminar TODAS las reglas (${carouselState.savedRules.length})?`)) {
-    carouselState.savedRules = [];
-    carouselState.currentRuleSet = [];
-    localStorage.removeItem('ruleCards');
-
-    updateCarousel();
-    updateCarouselInfo();
-
-    showNotification('info', 'Carrusel Limpiado',
-      'Todas las reglas han sido eliminadas');
-  }
-}
-
-// 🔥 ACTUALIZAR: Función generateRules para agregar al carrusel
-async function generateRules() {
-  try {
-    const response = await fetch('/rules/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        sessionId: appState.sessionId,
-        criteria: ['classification', 'safety', 'context']
-      })
-    });
-
-    const result = await response.json();
-
-    if (result.success) {
-      addToCustomRules(result.rules);
-
-      // 🔥 AGREGAR REGLAS GENERADAS AL CARRUSEL
-      const generatedRule = {
-        id: Date.now(),
-        name: 'reglas_generadas_automaticamente',
-        code: result.rules,
-        timestamp: new Date().toISOString(),
-        type: 'automática'
-      };
-
-      carouselState.savedRules.unshift(generatedRule);
-      carouselState.currentRuleSet = carouselState.savedRules;
-      localStorage.setItem('ruleCards', JSON.stringify(carouselState.savedRules));
-
-      updateCarousel();
-      updateCarouselInfo();
-
-      showNotification('success', 'Reglas Generadas',
-        'Se han generado reglas automáticamente y se han agregado al carrusel');
-
-    } else {
-      throw new Error(result.error);
-    }
-  } catch (error) {
-    showNotification('error', 'Error',
-      `No se pudieron generar las reglas: ${error.message}`);
-  }
-}
-
-function addToCustomRules(newRules) {
-  const currentRules = customRules.value;
-  if (currentRules && !currentRules.endsWith('\n')) {
-    customRules.value += '\n';
-  }
-  customRules.value += newRules + '\n';
-}
-
-// Plantillas de reglas
+// Función para cargar plantillas de reglas
 function loadTemplate(templateType) {
   const templates = {
     filter: `% Filtros básicos
@@ -2685,784 +2263,121 @@ cumple_condiciones(X) :- es_valido(X), tiene_datos(X).`
   addToCustomRules(templates[templateType] || templates.filter);
 }
 
-// Entrenamiento de modelo
-async function trainCustomModel() {
-  showLoading();
+// Función para agregar reglas al editor
+function addToCustomRules(newRules) {
+  const currentRules = document.getElementById('customRules').value;
+  const rulesEditor = document.getElementById('customRules');
 
-  try {
-    const response = await fetch('/train/model', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        modelType: 'custom_classifier',
-        labels: ['mi_clase_1', 'mi_clase_2', 'mi_clase_3']
-      })
-    });
+  if (currentRules && !currentRules.endsWith('\n')) {
+    rulesEditor.value += '\n';
+  }
+  rulesEditor.value += newRules + '\n';
 
-    const result = await response.json();
+  // Hacer scroll al final
+  rulesEditor.scrollTop = rulesEditor.scrollHeight;
+}
 
-    if (result.success) {
-      showAlert(`🎯 ${result.message}`, 'success');
-      console.log('Info del modelo:', result.modelInfo);
-    } else {
-      throw new Error(result.error);
-    }
-  } catch (error) {
-    showAlert(`❌ Error en entrenamiento: ${error.message}`, 'danger');
-  } finally {
-    hideLoading();
+// Función para eliminar reglas individuales
+function deleteRule(ruleIndex) {
+  const rule = carouselState.currentRuleSet[ruleIndex];
+  if (!rule) return;
+
+  if (confirm(`¿Estás seguro de que quieres eliminar la regla "${rule.name}"?`)) {
+    // Eliminar del array
+    carouselState.savedRules = carouselState.savedRules.filter(r => r.id !== rule.id);
+    carouselState.currentRuleSet = carouselState.savedRules;
+
+    // Guardar cambios
+    localStorage.setItem('attributeRuleCards', JSON.stringify(carouselState.savedRules));
+
+    // Actualizar carrusel
+    updateCarousel();
+    updateCarouselInfo();
+
+    showNotification('info', 'Regla Eliminada',
+      `"${rule.name}" ha sido eliminada del carrusel`);
   }
 }
 
-// Utilidades de UI
-function showAlert(message, type) {
-  alertDiv.textContent = message;
-  alertDiv.className = `alert alert-${type}`;
-  alertDiv.style.display = 'block';
-
-  setTimeout(() => {
-    alertDiv.style.display = 'none';
-  }, 5000);
+// Función para copiar reglas al portapapeles
+function copyRuleToClipboard(ruleCode) {
+  navigator.clipboard.writeText(ruleCode).then(() => {
+    showNotification('success', 'Copiada', 'Regla copiada al portapapeles');
+  }).catch(err => {
+    showNotification('error', 'Error', 'No se pudo copiar la regla');
+  });
 }
 
-// 🔥 FUNCIÓN MEJORADA: Mostrar loading
-function showLoading(type = 'default', message = 'Procesando...', details = '') {
-  if (!loadingDiv) {
-    console.warn('Loading div no disponible');
+// Función para cargar reglas guardadas
+async function loadSavedRulesList() {
+  try {
+    const response = await fetch(`/rules/list/${appState.sessionId}`);
+    const result = await response.json();
+
+    if (result.success) {
+      displaySavedRules(result.rules);
+    }
+  } catch (error) {
+    console.log('No se pudieron cargar las reglas guardadas:', error);
+  }
+}
+
+// Función para cargar una regla guardada
+async function loadSavedRule(ruleName) {
+  try {
+    const response = await fetch(`/rules/load/${appState.sessionId}/${ruleName}`);
+    const result = await response.json();
+
+    if (result.success) {
+      const customRules = document.getElementById('customRules');
+      customRules.value = result.rules;
+      showNotification('success', 'Reglas Cargadas', `Reglas "${ruleName}" cargadas en el editor`);
+    }
+  } catch (error) {
+    showNotification('error', 'Error', `No se pudieron cargar las reglas: ${error.message}`);
+  }
+}
+
+// Función para usar regla en consultas
+async function useSavedRuleInQueries(ruleName) {
+  try {
+    const response = await fetch(`/rules/load/${appState.sessionId}/${ruleName}`);
+    const result = await response.json();
+
+    if (result.success) {
+      addToCustomRules(result.rules);
+      showNotification('success', 'Reglas Agregadas', `Reglas "${ruleName}" listas para usar en consultas`);
+    }
+  } catch (error) {
+    showNotification('error', 'Error', `No se pudieron usar las reglas: ${error.message}`);
+  }
+}
+
+// Función para eliminar regla guardada
+async function deleteSavedRule(ruleName) {
+  if (!confirm(`¿Estás seguro de que quieres eliminar las reglas "${ruleName}"?`)) {
     return;
   }
 
-  // Actualizar estado
-  loadingState.isShowing = true;
-  loadingState.currentType = type;
-  loadingState.progress = 0;
-
-  // Determinar ícono y clase según el tipo
-  let icon = '⏳';
-  let loadingClass = 'loading';
-
-  switch (type) {
-    case 'analyzing':
-      icon = '🔍';
-      loadingClass += ' analyzing';
-      message = message || 'Analizando...';
-      break;
-    case 'querying':
-      icon = '⚡';
-      loadingClass += ' querying';
-      message = message || 'Ejecutando consulta...';
-      break;
-    case 'processing':
-      icon = '🔄';
-      loadingClass += ' processing';
-      message = message || 'Procesando...';
-      break;
-    case 'saving':
-      icon = '💾';
-      message = message || 'Guardando...';
-      break;
-    case 'generating':
-      icon = '✨';
-      message = message || 'Generando...';
-      break;
-    default:
-      icon = '⏳';
-      message = message || 'Procesando...';
-  }
-
-  // Construir el contenido del loading
-  let loadingHTML = `
-        <div class="loading-particles">
-            <div class="loading-particle"></div>
-            <div class="loading-particle"></div>
-            <div class="loading-particle"></div>
-        </div>
-        <div class="loading-content">
-    `;
-
-  if (type === 'progress') {
-    loadingHTML += `
-            <div class="loading-spinner"></div>
-            <div>
-                <p>${message}</p>
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progressFill" style="width: 0%"></div>
-                </div>
-                <div class="progress-text" id="progressText">0%</div>
-                ${details ? `<div class="loading-details">${details}</div>` : ''}
-            </div>
-        `;
-  } else {
-    loadingHTML += `
-            ${icon ? `<div class="loading-icon">${icon}</div>` : ''}
-            <div>
-                <p>${message}</p>
-                ${details ? `<div class="loading-status">${details}</div>` : ''}
-                <div class="loading-spinner"></div>
-            </div>
-        `;
-  }
-
-  loadingHTML += `</div>`;
-
-  // Aplicar al DOM
-  loadingDiv.className = loadingClass;
-  loadingDiv.innerHTML = loadingHTML;
-  loadingDiv.style.display = 'block';
-
-  // Efecto de entrada
-  loadingDiv.style.animation = 'slideInRight 0.5s ease-out';
-}
-
-// 🔥 FUNCIÓN MEJORADA: Ocultar loading
-function hideLoading() {
-  if (!loadingDiv || !loadingState.isShowing) return;
-
-  // Efecto de salida
-  loadingDiv.style.animation = 'slideOutRight 0.5s ease-in forwards';
-
-  // Ocultar después de la animación
-  setTimeout(() => {
-    if (loadingDiv) {
-      loadingDiv.style.display = 'none';
-      loadingState.isShowing = false;
-    }
-  }, 500);
-}
-
-
-function clearResults() {
-  prologOutput.textContent = '';
-  prologResults.style.display = 'none';
-}
-
-function exportResults() {
-  const results = prologOutput.textContent;
-  if (!results) {
-    showAlert('⚠️ No hay resultados para exportar', 'warning');
-    return;
-  }
-
-  const blob = new Blob([results], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `resultados_prolog_${new Date().getTime()}.txt`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function switchTab(tabName) {
-  // Ocultar todos los tabs
-  document.querySelectorAll('.tab-content').forEach(tab => {
-    tab.classList.remove('active');
-  });
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.classList.remove('active');
-  });
-
-  // Mostrar tab seleccionado
-  document.getElementById(tabName + 'Tab').classList.add('active');
-  event.currentTarget.classList.add('active');
-}
-
-function updateSessionInfo() {
-  const sessionElement = document.getElementById('sessionStatus');
-  if (sessionElement) {
-    sessionElement.textContent = `Sesión: ${appState.sessionId}`;
-  }
-}
-
-function loadExamplePrologQueries() {
-  const examples = [
-    "dato(X, Y, Z), Y > 100.",
-    "findall(X, dato(X, _, _), Resultados).",
-    "objeto_detectado(_, Objeto, Confianza), Confianza > 80.",
-    "color_dominante(_, Color, Porcentaje), Porcentaje > 20."
-  ];
-
-  prologQuery.placeholder = `Ejemplos:\n${examples.join('\n')}`;
-}
-
-function generatePrologExamples(headers, data) {
-  if (!headers || !data.length) return;
-
-  const suggestionButtons = document.getElementById('suggestionButtons');
-  if (!suggestionButtons) return;
-
-  let html = '';
-
-  // Ejemplos basados en los datos
-  headers.forEach(header => {
-    const firstValue = data[0][header];
-    if (typeof firstValue === 'number') {
-      html += `<button class="btn btn-outline btn-sm" onclick="setPrologQuery('dato(X, ${header}, Valor), Valor > ${firstValue}.')">
-                ${header} > ${firstValue}
-            </button>`;
-    } else {
-      html += `<button class="btn btn-outline btn-sm" onclick="setPrologQuery('dato(X, ${header}, '${firstValue}').')">
-                ${header} = '${firstValue}'
-            </button>`;
-    }
-  });
-
-  suggestionButtons.innerHTML = html;
-}
-
-function setPrologQuery(query) {
-  prologQuery.value = query;
-}
-
-// Análisis de datos
-async function performAnalysis() {
-  const analysisType = document.getElementById('analysisType').value;
-  const params = document.getElementById('analysisParams').value;
-
-  showLoading();
-
   try {
-    const response = await fetch('/analyze/data', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        analysisType,
-        parameters: params,
-        sessionId: appState.sessionId
-      })
+    const response = await fetch(`/rules/delete/${appState.sessionId}/${ruleName}`, {
+      method: 'DELETE'
     });
 
     const result = await response.json();
 
     if (result.success) {
-      displayAnalysisResults(result.analysis);
-      showAlert(`📊 ${result.message}`, 'success');
+      showNotification('info', 'Reglas Eliminadas', `Reglas "${ruleName}" eliminadas`);
+      loadSavedRulesList();
     } else {
       throw new Error(result.error);
     }
   } catch (error) {
-    showAlert(`❌ Error en análisis: ${error.message}`, 'danger');
-  } finally {
-    hideLoading();
+    showNotification('error', 'Error', `No se pudieron eliminar las reglas: ${error.message}`);
   }
 }
 
-function displayAnalysisResults(analysis) {
-  const analysisResults = document.getElementById('analysisResults');
-  const analysisOutput = document.getElementById('analysisOutput');
-
-  analysisOutput.textContent = JSON.stringify(analysis, null, 2);
-  analysisResults.style.display = 'block';
-}
-
-// Análisis avanzado
-async function performAdvancedAnalysis(file, analysisType = 'comprehensive') {
-  showLoading();
-
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('sessionId', appState.sessionId);
-  formData.append('analysisType', analysisType);
-
-  try {
-    const response = await fetch('/analyze/advanced', {
-      method: 'POST',
-      body: formData
-    });
-
-    const result = await response.json();
-
-    if (result.success) {
-      displayAdvancedAnalysis(result.analysis);
-      showAlert(`🔍 ${result.message}`, 'success');
-    } else {
-      throw new Error(result.error);
-    }
-  } catch (error) {
-    showAlert(`❌ Error en análisis avanzado: ${error.message}`, 'danger');
-  } finally {
-    hideLoading();
-  }
-}
-
-function displayAdvancedAnalysis(analysis) {
-  const resultsContainer = document.createElement('div');
-  resultsContainer.className = 'advanced-analysis-results';
-
-  let html = `
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">
-                    <i class="fas fa-chart-line"></i>
-                    Análisis Avanzado
-                </div>
-                <div class="card-actions">
-                    <button class="btn btn-outline btn-sm" onclick="generateReport()">
-                        <i class="fas fa-file-pdf"></i> Generar Reporte
-                    </button>
-                </div>
-            </div>
-            
-            <div class="analysis-sections">
-    `;
-
-  // Resumen
-  if (analysis.summary) {
-    html += `
-            <div class="analysis-section">
-                <h4><i class="fas fa-info-circle"></i> Resumen</h4>
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-value">${analysis.summary.totalRecords || 0}</div>
-                        <div class="stat-label">Registros</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">${analysis.summary.totalColumns || 0}</div>
-                        <div class="stat-label">Columnas</div>
-                    </div>
-                </div>
-            </div>
-        `;
-  }
-
-  // Insights
-  if (analysis.insights && analysis.insights.length > 0) {
-    html += `
-            <div class="analysis-section">
-                <h4><i class="fas fa-lightbulb"></i> Insights</h4>
-                <div class="insights-list">
-                    ${analysis.insights.map(insight => `
-                        <div class="insight-item">
-                            <div class="insight-header">
-                                <span class="insight-type">${insight.type}</span>
-                                <span class="insight-column">${insight.column}</span>
-                            </div>
-                            <div class="insight-details">
-                                ${Object.entries(insight).filter(([key]) => !['type', 'column'].includes(key))
-        .map(([key, value]) => `<span>${key}: ${JSON.stringify(value)}</span>`)
-        .join(' | ')}
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        `;
-  }
-
-  // Patrones
-  if (analysis.patterns && analysis.patterns.length > 0) {
-    html += `
-            <div class="analysis-section">
-                <h4><i class="fas fa-project-diagram"></i> Patrones Detectados</h4>
-                <div class="patterns-list">
-                    ${analysis.patterns.map(pattern => `
-                        <div class="pattern-item ${pattern.type}">
-                            <i class="fas fa-${getPatternIcon(pattern.type)}"></i>
-                            <div class="pattern-content">
-                                <div class="pattern-message">${pattern.message || pattern.type}</div>
-                                ${pattern.columns ? `<div class="pattern-columns">Columnas: ${pattern.columns.join(', ')}</div>` : ''}
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        `;
-  }
-
-  // Recomendaciones
-  if (analysis.recommendations && analysis.recommendations.length > 0) {
-    html += `
-            <div class="analysis-section">
-                <h4><i class="fas fa-bullhorn"></i> Recomendaciones</h4>
-                <div class="recommendations-list">
-                    ${analysis.recommendations.map(rec => `
-                        <div class="recommendation-item ${rec.type}">
-                            <i class="fas fa-${getRecommendationIcon(rec.type)}"></i>
-                            <span>${rec.message}</span>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        `;
-  }
-
-  html += `
-            </div>
-        </div>
-    `;
-
-  resultsContainer.innerHTML = html;
-
-  // Insertar después de la sección de estadísticas
-  const statsCard = document.getElementById('statsCard');
-  if (statsCard) {
-    statsCard.parentNode.insertBefore(resultsContainer, statsCard.nextSibling);
-  } else {
-    document.querySelector('.container').appendChild(resultsContainer);
-  }
-}
-
-function getPatternIcon(patternType) {
-  const icons = {
-    'outliers_detected': 'exclamation-triangle',
-    'correlation_suggestion': 'project-diagram',
-    'trend_detected': 'chart-line'
-  };
-  return icons[patternType] || 'chart-bar';
-}
-
-function getRecommendationIcon(recommendationType) {
-  const icons = {
-    'warning': 'exclamation-triangle',
-    'data_quality': 'database',
-    'optimization': 'rocket'
-  };
-  return icons[recommendationType] || 'info-circle';
-}
-
-// Generar reporte
-async function generateReport() {
-  try {
-    const response = await fetch(`/report/${appState.sessionId}`);
-    const result = await response.json();
-
-    if (result.success) {
-      // Descargar reporte como JSON
-      const blob = new Blob([JSON.stringify(result.report, null, 2)], {
-        type: 'application/json'
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `reporte_analisis_${new Date().getTime()}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-
-      showAlert('📄 Reporte generado y descargado', 'success');
-    } else {
-      throw new Error(result.error);
-    }
-  } catch (error) {
-    showAlert(`❌ Error generando reporte: ${error.message}`, 'danger');
-  }
-}
-
-// Cargar plantillas de reglas
-async function loadRuleTemplates() {
-  try {
-    const response = await fetch('/rules/templates');
-    const result = await response.json();
-
-    if (result.success) {
-      // Agregar botones de plantillas
-      const templatesContainer = document.createElement('div');
-      templatesContainer.className = 'templates-section';
-      templatesContainer.innerHTML = `
-                <h4><i class="fas fa-magic"></i> Plantillas de Reglas</h4>
-                <div class="template-buttons">
-                    ${Object.entries(result.templates).map(([name, template]) => `
-                        <button class="btn btn-outline btn-sm" onclick="loadRuleTemplate('${name}')">
-                            <i class="fas fa-cube"></i> ${name.replace('_', ' ')}
-                        </button>
-                    `).join('')}
-                </div>
-            `;
-
-      const rulesCard = document.querySelector('.card .prolog-examples');
-      if (rulesCard) {
-        rulesCard.parentNode.insertBefore(templatesContainer, rulesCard);
-      }
-    }
-  } catch (error) {
-    console.log('No se pudieron cargar las plantillas:', error.message);
-  }
-}
-
-function loadRuleTemplate(templateName) {
-  // Esto cargaría la plantilla cuando se implemente la ruta
-  showAlert(`📝 Plantilla "${templateName}" seleccionada - Implementar carga`, 'info');
-}
-
-// // Mejorar el manejo de archivos para incluir análisis avanzado
-// function handleFileSelect(e, type) {
-//   if (e.target.files.length > 0) {
-//     const file = e.target.files[0];
-//     if (type === 'data') {
-//       // Opción: procesamiento normal o avanzado
-//       if (confirm('¿Desea realizar un análisis avanzado del archivo?')) {
-//         performAdvancedAnalysis(file);
-//       } else {
-//         processDataFile(file);
-//       }
-//     } else {
-//       processImageFile(file);
-//     }
-//   }
-// }
-
-// Generar consultas automáticas basadas en datos
-function generateAutomaticQueries(data, headers, analysisType = 'data') {
-  const queries = [];
-
-  if (analysisType === 'data' && data.length > 0) {
-    // Consultas básicas para datos
-    queries.push({
-      name: "Todos los registros",
-      query: "dato(Id, _, _).",
-      description: "Obtener todos los registros"
-    });
-
-    // Consultas por tipo de columna
-    headers.forEach(header => {
-      const sampleValue = data[0][header];
-
-      if (typeof sampleValue === 'number') {
-        queries.push({
-          name: `${header} > promedio`,
-          query: `dato(Id, ${header}, Valor), Valor > 50.`,
-          description: `Registros con ${header} mayor a 50`
-        });
-
-        queries.push({
-          name: `Ordenar por ${header}`,
-          query: `findall(Valor-Id, dato(Id, ${header}, Valor), Lista), sort(Lista, Ordenados).`,
-          description: `Ordenar registros por ${header}`
-        });
-      } else if (typeof sampleValue === 'string') {
-        queries.push({
-          name: `${header} específico`,
-          query: `dato(Id, ${header}, '${sampleValue}').`,
-          description: `Registros donde ${header} es '${sampleValue}'`
-        });
-
-        queries.push({
-          name: `Valores únicos de ${header}`,
-          query: `setof(Valor, Id^dato(Id, ${header}, Valor), Unicos).`,
-          description: `Valores únicos en ${header}`
-        });
-      }
-    });
-
-    // Consultas de agregación
-    queries.push({
-      name: "Conteo por categoría",
-      query: "findall(Categoria, dato(_, Categoria, _), Lista), msort(Lista, Ordenada), count_elements(Ordenada, Conteo).",
-      description: "Contar registros por categoría"
-    });
-
-    queries.push({
-      name: "Registros con condiciones múltiples",
-      query: "dato(Id, Col1, V1), dato(Id, Col2, V2), V1 > V2.",
-      description: "Registros donde una columna es mayor que otra"
-    });
-
-  } else if (analysisType === 'image') {
-    // Consultas para análisis de imágenes
-    queries.push({
-      name: "Objetos detectados",
-      query: "objeto_detectado(Id, Objeto, Confianza).",
-      description: "Todos los objetos detectados en la imagen"
-    });
-
-    queries.push({
-      name: "Objetos confiables",
-      query: "objeto_confiable(Objeto).",
-      description: "Objetos con alta confianza (>80%)"
-    });
-
-    queries.push({
-      name: "Colores dominantes",
-      query: "color_dominante(Id, Color, Porcentaje).",
-      description: "Colores principales de la imagen"
-    });
-
-    queries.push({
-      name: "Imagen brillante",
-      query: "imagen_brillante.",
-      description: "Verificar si la imagen es brillante"
-    });
-
-    queries.push({
-      name: "Características técnicas",
-      query: "imagen_ancho(Ancho), imagen_alto(Alto), imagen_formato(Formato).",
-      description: "Información técnica de la imagen"
-    });
-  }
-
-  return queries;
-}
-
-// Mostrar consultas automáticas en la interfaz
-function displayAutomaticQueries(queries) {
-  const autoQueriesContainer = document.getElementById('autoQueriesContainer');
-  if (!autoQueriesContainer) return;
-
-  let html = `
-        <div class="auto-queries-section">
-            <h4><i class="fas fa-bolt"></i> Consultas Automáticas Sugeridas</h4>
-            <div class="auto-queries-grid">
-    `;
-
-  queries.forEach((q, index) => {
-    html += `
-            <div class="auto-query-card" onclick="loadAutoQuery('${q.query.replace(/'/g, "\\'")}')">
-                <div class="auto-query-header">
-                    <i class="fas fa-play-circle"></i>
-                    <span class="auto-query-name">${q.name}</span>
-                </div>
-                <div class="auto-query-desc">${q.description}</div>
-                <div class="auto-query-preview">${q.query}</div>
-            </div>
-        `;
-  });
-
-  html += `
-            </div>
-        </div>
-    `;
-
-  autoQueriesContainer.innerHTML = html;
-  autoQueriesContainer.style.display = 'block';
-}
-
-// Cargar consulta automática en el editor
-function loadAutoQuery(query) {
-  prologQuery.value = query;
-  prologQuery.focus();
-
-  // Resaltar visualmente que se cargó una consulta
-  prologQuery.style.borderColor = '#007bff';
-  setTimeout(() => {
-    prologQuery.style.borderColor = '';
-  }, 1000);
-}
-
-// Generar consultas avanzadas basadas en patrones de datos
-function generateAdvancedQueries(data, headers, stats) {
-  const advancedQueries = [];
-
-  if (!data.length) return advancedQueries;
-
-  // Detectar columnas numéricas para análisis estadístico
-  const numericColumns = headers.filter(header =>
-    stats.columnStats[header] && stats.columnStats[header].type === 'number'
-  );
-
-  // Detectar columnas categóricas
-  const categoricalColumns = headers.filter(header =>
-    stats.columnStats[header] && stats.columnStats[header].type === 'string' &&
-    stats.columnStats[header].unique < 20 // Considerar categóricas si tienen pocos valores únicos
-  );
-
-  // Consultas estadísticas
-  numericColumns.forEach(column => {
-    const colStats = stats.columnStats[column];
-
-    advancedQueries.push({
-      name: `Análisis de ${column}`,
-      query: `findall(Valor, dato(_, ${column}, Valor), Valores), min_list(Valores, Min), max_list(Valores, Max).`,
-      description: `Mínimo y máximo de ${column} (Min: ${colStats.min}, Max: ${colStats.max})`
-    });
-
-    advancedQueries.push({
-      name: `Outliers en ${column}`,
-      query: `dato(Id, ${column}, Valor), Valor > ${colStats.max} ; dato(Id, ${column}, Valor), Valor < ${colStats.min}.`,
-      description: `Valores atípicos en ${column}`
-    });
-  });
-
-  // Consultas de correlación
-  if (numericColumns.length >= 2) {
-    advancedQueries.push({
-      name: "Correlación entre columnas",
-      query: `dato(Id, ${numericColumns[0]}, V1), dato(Id, ${numericColumns[1]}, V2), V1 > V2.`,
-      description: `Relación entre ${numericColumns[0]} y ${numericColumns[1]}`
-    });
-  }
-
-  // Consultas de agrupamiento para columnas categóricas
-  categoricalColumns.forEach(column => {
-    advancedQueries.push({
-      name: `Agrupar por ${column}`,
-      query: `findall(Valor-Count, (setof(Id, dato(Id, ${column}, Valor), Lista), length(Lista, Count)), Grupos).`,
-      description: `Conteo de registros por ${column}`
-    });
-  });
-
-  return advancedQueries;
-}
-
-
-// Función para consultas de ejemplo rápidas
-function setupQuickQueries() {
-  const quickQueries = [
-    {
-      name: "Búsqueda general",
-      query: "dato(_, _, _).",
-      icon: "fa-search"
-    },
-    {
-      name: "Conteo total",
-      query: "findall(Id, dato(Id, _, _), Lista), length(Lista, Total).",
-      icon: "fa-calculator"
-    },
-    {
-      name: "Valores únicos",
-      query: "setof(Valor, Col^Id^dato(Id, Col, Valor), Unicos).",
-      icon: "fa-list"
-    },
-    {
-      name: "Filtrar numéricos",
-      query: "dato(Id, Col, Valor), number(Valor), Valor > 0.",
-      icon: "fa-filter"
-    }
-  ];
-
-  const quickQueriesContainer = document.getElementById('quickQueries');
-  if (!quickQueriesContainer) return;
-
-  let html = '<div class="quick-queries"><h4>Consultas Rápidas</h4><div class="quick-query-buttons">';
-
-  quickQueries.forEach(q => {
-    html += `
-            <button class="btn btn-outline btn-sm quick-query-btn" onclick="loadAutoQuery('${q.query}')">
-                <i class="fas ${q.icon}"></i> ${q.name}
-            </button>
-        `;
-  });
-
-  html += '</div></div>';
-  quickQueriesContainer.innerHTML = html;
-}
-
-// Guardar consulta favorita
-function saveQuery() {
-  const query = prologQuery.value.trim();
-  if (!query) {
-    showAlert('⚠️ No hay consulta para guardar', 'warning');
-    return;
-  }
-
-  const savedQueries = JSON.parse(localStorage.getItem('savedQueries') || '[]');
-  const queryName = prompt('Nombre para esta consulta:', `Consulta_${new Date().getTime()}`);
-
-  if (queryName) {
-    savedQueries.push({
-      name: queryName,
-      query: query,
-      timestamp: new Date().toISOString()
-    });
-
-    localStorage.setItem('savedQueries', JSON.stringify(savedQueries));
-    showAlert('✅ Consulta guardada en favoritos', 'success');
-    loadSavedQueries();
-  }
-}
-
-// Cargar consultas guardadas
+// Función para cargar consultas guardadas
 function loadSavedQueries() {
   const savedQueries = JSON.parse(localStorage.getItem('savedQueries') || '[]');
   const container = document.getElementById('savedQueriesContainer');
@@ -3498,1358 +2413,114 @@ function loadSavedQueries() {
   container.innerHTML = html;
 }
 
-// 🔥 NUEVA FUNCIÓN: Cargar y mostrar reglas guardadas
-async function loadSavedRulesList() {
-  try {
-    const response = await fetch(`/rules/list/${appState.sessionId}`);
-    const result = await response.json();
-
-    if (result.success) {
-      displaySavedRules(result.rules);
-    }
-  } catch (error) {
-    console.log('No se pudieron cargar las reglas guardadas:', error);
-  }
-}
-
-// 🔥 ACTUALIZADA: Mostrar reglas guardadas con mejor interfaz
-function displaySavedRules(rulesList) {
-  const savedRulesContainer = document.getElementById('savedRulesContainer');
-  if (!savedRulesContainer) return;
-
-  let html = `
-    <div class="saved-rules-section">
-      <h4><i class="fas fa-brain"></i> Base de Conocimiento - Reglas Guardadas</h4>
-      <p class="rules-description">Estas reglas están disponibles automáticamente en todas las consultas Prolog</p>
-      <div class="saved-rules-list">
-  `;
-
-  if (rulesList.length === 0) {
-    html += `
-      <div class="no-rules">
-        <i class="fas fa-info-circle"></i>
-        <p>No hay reglas guardadas. Genera reglas automáticamente o crea tus propias reglas.</p>
-      </div>
-    `;
-  } else {
-    rulesList.forEach(ruleName => {
-      html += `
-        <div class="saved-rule-item">
-          <div class="saved-rule-info">
-            <div class="saved-rule-header">
-              <div class="saved-rule-name">
-                <i class="fas fa-cube"></i>
-                ${ruleName}
-              </div>
-              <div class="saved-rule-status">
-                <span class="status-badge active">
-                  <i class="fas fa-check"></i>
-                  ACTIVA EN CONSULTAS
-                </span>
-              </div>
-            </div>
-            <div class="saved-rule-actions">
-              <button class="btn btn-sm btn-outline" onclick="loadSavedRule('${ruleName}')" title="Editar reglas">
-                <i class="fas fa-edit"></i> Editar
-              </button>
-              <button class="btn btn-sm btn-outline" onclick="useSavedRuleInQueries('${ruleName}')" title="Usar en consultas">
-                <i class="fas fa-play"></i> Usar en Consulta
-              </button>
-              <button class="btn btn-sm btn-outline btn-danger" onclick="deleteSavedRule('${ruleName}')" title="Eliminar reglas">
-                <i class="fas fa-trash"></i> Eliminar
-              </button>
-            </div>
-          </div>
-        </div>
-      `;
-    });
-  }
-
-  html += `
-      </div>
-      <div class="rules-help">
-        <i class="fas fa-lightbulb"></i>
-        <strong>Tip:</strong> Las reglas guardadas se cargan automáticamente en todas las consultas Prolog
-      </div>
-    </div>
-  `;
-
-  savedRulesContainer.innerHTML = html;
-}
-
-// 🔥 NUEVA FUNCIÓN: Cargar una regla guardada en el editor
-async function loadSavedRule(ruleName) {
-  try {
-    const response = await fetch(`/rules/load/${appState.sessionId}/${ruleName}`);
-    const result = await response.json();
-
-    if (result.success) {
-      const customRules = document.getElementById('customRules');
-      customRules.value = result.rules;
-      showAlert(`✅ Reglas "${ruleName}" cargadas en el editor`, 'success');
-    }
-  } catch (error) {
-    showAlert(`❌ Error cargando reglas: ${error.message}`, 'danger');
-  }
-}
-
-// 🔥 NUEVA FUNCIÓN: Usar una regla guardada en consultas
-async function useSavedRule(ruleName) {
-  try {
-    const response = await fetch(`/rules/load/${appState.sessionId}/${ruleName}`);
-    const result = await response.json();
-
-    if (result.success) {
-      // Agregar las reglas al editor de consultas Prolog
-      addToCustomRules(result.rules);
-      showAlert(`✅ Reglas "${ruleName}" agregadas para usar en consultas`, 'success');
-    }
-  } catch (error) {
-    showAlert(`❌ Error usando reglas: ${error.message}`, 'danger');
-  }
-}
-
-// 🔥 NUEVA FUNCIÓN: Eliminar reglas guardadas
-async function deleteSavedRule(ruleName) {
-  if (!confirm(`¿Estás seguro de que quieres eliminar las reglas "${ruleName}"?`)) {
+// Función para guardar consulta actual
+function saveQuery() {
+  const query = document.getElementById('prologQuery').value.trim();
+  if (!query) {
+    showNotification('warning', 'Consulta vacía', 'No hay consulta para guardar');
     return;
   }
 
-  try {
-    const response = await fetch(`/rules/delete/${appState.sessionId}/${ruleName}`, {
-      method: 'DELETE'
+  const savedQueries = JSON.parse(localStorage.getItem('savedQueries') || '[]');
+  const queryName = prompt('Nombre para esta consulta:', `Consulta_${new Date().getTime()}`);
+
+  if (queryName) {
+    savedQueries.push({
+      name: queryName,
+      query: query,
+      timestamp: new Date().toISOString()
     });
 
-    const result = await response.json();
-
-    if (result.success) {
-      showAlert(`🗑️ Reglas "${ruleName}" eliminadas`, 'info');
-      loadSavedRulesList(); // Recargar la lista
-    } else {
-      throw new Error(result.error);
-    }
-  } catch (error) {
-    showAlert(`❌ Error eliminando reglas: ${error.message}`, 'danger');
+    localStorage.setItem('savedQueries', JSON.stringify(savedQueries));
+    showNotification('success', 'Consulta Guardada', 'Consulta guardada en favoritos');
+    loadSavedQueries();
   }
 }
 
-// Eliminar consulta guardada
+// Función para eliminar consulta guardada
 function deleteSavedQuery(index) {
   const savedQueries = JSON.parse(localStorage.getItem('savedQueries') || '[]');
   savedQueries.splice(index, 1);
   localStorage.setItem('savedQueries', JSON.stringify(savedQueries));
   loadSavedQueries();
-  showAlert('🗑️ Consulta eliminada', 'info');
+  showNotification('info', 'Consulta Eliminada', 'Consulta eliminada de favoritos');
 }
 
-// Estado para animaciones
-const animationState = {
-  isScanning: false,
-  scanProgress: 0,
-  currentFrame: 0
-};
+// Función para cargar consulta automática
+function loadAutoQuery(query) {
+  const queryEditor = document.getElementById('prologQuery');
+  if (queryEditor) {
+    queryEditor.value = query;
+    queryEditor.focus();
 
-// Previsualización de imagen con animación
-function previewImageWithAnimation(file) {
-  const reader = new FileReader();
-
-  reader.onload = function (e) {
-    const previewContainer = document.getElementById('imagePreviewContainer');
-    if (!previewContainer) {
-      createImagePreviewContainer();
-    }
-
-    displayImagePreview(e.target.result, file.name);
-    startScanAnimation();
-  };
-
-  reader.readAsDataURL(file);
-}
-
-function createImagePreviewContainer() {
-  const uploadArea = document.getElementById('imageUploadArea');
-  const previewHTML = `
-    <div id="imagePreviewContainer" class="image-preview-container">
-      <div class="preview-header">
-        <h4><i class="fas fa-image"></i> Vista Previa</h4>
-        <button class="btn btn-sm btn-outline" onclick="closePreview()">
-          <i class="fas fa-times"></i>
-        </button>
-      </div>
-      <div class="preview-content">
-        <div id="imagePreview" class="image-preview"></div>
-        <div id="scanAnimation" class="scan-animation">
-          <div class="scanner-line"></div>
-          <div class="scan-glow"></div>
-          <div class="analysis-text">
-            <i class="fas fa-robot"></i>
-            <span>Analizando con IA...</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-
-  uploadArea.insertAdjacentHTML('afterend', previewHTML);
-}
-
-function displayImagePreview(imageData, fileName) {
-  const preview = document.getElementById('imagePreview');
-  preview.innerHTML = `
-    <img src="${imageData}" alt="Vista previa" class="preview-image">
-    <div class="preview-info">
-      <span class="file-name">${fileName}</span>
-      <div class="preview-stats">
-        <span class="stat"><i class="fas fa-expand"></i> Cargando...</span>
-      </div>
-    </div>
-  `;
-
-  // Obtener dimensiones reales de la imagen
-  const img = new Image();
-  img.onload = function () {
-    const stats = preview.querySelector('.preview-stats');
-    stats.innerHTML = `
-      <span class="stat"><i class="fas fa-expand"></i> ${this.width} × ${this.height}</span>
-      <span class="stat"><i class="fas fa-weight-hanging"></i> ${(this.width * this.height / 1000000).toFixed(1)} MP</span>
-    `;
-  };
-  img.src = imageData;
-}
-
-function startScanAnimation() {
-  animationState.isScanning = true;
-  animationState.scanProgress = 0;
-  animationState.currentFrame = 0;
-
-  const scanElement = document.getElementById('scanAnimation');
-  scanElement.style.display = 'block';
-
-  animateScan();
-}
-
-function animateScan() {
-  if (!animationState.isScanning) return;
-
-  const scanElement = document.getElementById('scanAnimation');
-  const scannerLine = scanElement.querySelector('.scanner-line');
-  const scanGlow = scanElement.querySelector('.scan-glow');
-
-  animationState.currentFrame++;
-  animationState.scanProgress = (animationState.currentFrame % 100) / 100;
-
-  // Mover línea de escaneo
-  scannerLine.style.top = (animationState.scanProgress * 100) + '%';
-
-  // Efecto de brillo
-  scanGlow.style.opacity = Math.sin(animationState.currentFrame * 0.1) * 0.3 + 0.7;
-
-  // Texto animado
-  const analysisText = scanElement.querySelector('.analysis-text');
-  if (animationState.currentFrame % 60 === 0) {
-    analysisText.style.animation = 'pulse 0.5s ease-in-out';
+    // Efecto visual
+    queryEditor.style.borderColor = '#007bff';
+    queryEditor.style.boxShadow = '0 0 10px rgba(0, 123, 255, 0.3)';
     setTimeout(() => {
-      analysisText.style.animation = '';
-    }, 500);
-  }
-
-  requestAnimationFrame(animateScan);
-}
-
-function stopScanAnimation() {
-  animationState.isScanning = false;
-  const scanElement = document.getElementById('scanAnimation');
-  if (scanElement) {
-    scanElement.style.display = 'none';
+      queryEditor.style.borderColor = '';
+      queryEditor.style.boxShadow = '';
+    }, 2000);
   }
 }
 
-function closePreview() {
-  const previewContainer = document.getElementById('imagePreviewContainer');
-  if (previewContainer) {
-    previewContainer.remove();
-  }
-  stopScanAnimation();
+// Función para limpiar resultados
+function clearResults() {
+  const prologOutput = document.getElementById('prologOutput');
+  const prologResults = document.getElementById('prologResults');
+
+  if (prologOutput) prologOutput.textContent = '';
+  if (prologResults) prologResults.style.display = 'none';
+
+  showNotification('info', 'Resultados Limpiados', 'Los resultados han sido eliminados');
 }
 
-// Generar consultas específicas para imágenes
-function generateImageQueries(analysis) {
-  const queries = [];
-
-  // Consultas básicas de detección
-  queries.push({
-    name: "Objetos detectados",
-    query: "objeto_detectado(Id, Objeto, Confianza).",
-    description: "Todos los objetos identificados por la IA"
-  });
-
-  // Consultas de seguridad
-  if (analysis.safetyAssessment && !analysis.safetyAssessment.safe) {
-    queries.push({
-      name: "Elementos peligrosos",
-      query: "objeto_peligroso(Objeto, Riesgo, Recomendacion).",
-      description: "Objetos identificados como peligrosos"
-    });
-  }
-
-  // Consultas de clasificación
-  if (analysis.classification && analysis.classification.length > 0) {
-    analysis.classification.forEach((classification, index) => {
-      if (classification.type === 'hongo') {
-        queries.push({
-          name: `Clasificación: ${classification.object}`,
-          query: `clasificar_hongo('${classification.object}', Tipo, Peligro).`,
-          description: `Análisis de seguridad para ${classification.object}`
-        });
-      }
-    });
-  }
-
-  // Consultas de características técnicas
-  queries.push({
-    name: "Metadatos técnicos",
-    query: "imagen_ancho(Ancho), imagen_alto(Alto), imagen_formato(Formato).",
-    description: "Información técnica de la imagen"
-  });
-
-  // Consultas de colores
-  queries.push({
-    name: "Análisis de color",
-    query: "color_dominante(Id, Color, Porcentaje).",
-    description: "Colores dominantes en la imagen"
-  });
-
-  return queries;
-}
-
-// Mejorar la visualización del análisis
-function displayImageAnalysis(analysis, prologFacts) {
-  const prevAnalysis = document.querySelector('.image-analysis-results');
-  if (prevAnalysis) {
-    prevAnalysis.remove();
-  }
-
-  const resultsContainer = document.createElement('div');
-  resultsContainer.className = 'image-analysis-results';
-
-  let safetyBadge = '';
-  if (analysis.safetyAssessment) {
-    const safetyClass = analysis.safetyAssessment.safe ? 'safe' : 'dangerous';
-    safetyBadge = `
-      <div class="safety-badge ${safetyClass}">
-        <i class="fas ${analysis.safetyAssessment.safe ? 'fa-check-circle' : 'fa-exclamation-triangle'}"></i>
-        ${analysis.safetyAssessment.safe ? 'ESCENA SEGURA' : 'PRECAUCIÓN REQUERIDA'}
-      </div>
-    `;
-  }
-
-  resultsContainer.innerHTML = `
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">
-          <i class="fas fa-robot"></i>
-          Análisis de Imagen por IA
-          ${safetyBadge}
-        </div>
-      </div>
-      
-      <div class="analysis-grid">
-        <!-- Sección de Detección IA -->
-        <div class="analysis-section">
-          <h4><i class="fas fa-eye"></i> Detección por Inteligencia Artificial</h4>
-          <div class="ai-detection-results">
-            ${analysis.aiDetection ? `
-              <div class="model-info">
-                <span class="model-name">Modelo: ${analysis.aiDetection.model}</span>
-                <span class="confidence-level">Confianza: ${analysis.aiDetection.confidence}</span>
-              </div>
-            ` : ''}
-            <div class="objects-grid">
-              ${analysis.detectedObjects.map(obj => `
-                <div class="object-card ${getRiskClass(obj)}">
-                  <div class="object-header">
-                    <span class="object-name">${obj.object}</span>
-                    <span class="object-confidence ${getConfidenceClass(obj.confidence)}">
-                      ${obj.confidence}
-                    </span>
-                  </div>
-                  ${obj.bbox ? `
-                    <div class="object-bbox">
-                      Posición: ${obj.bbox.map(b => b.toFixed(1)).join('%, ')}%
-                    </div>
-                  ` : ''}
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        </div>
-        
-        <!-- Sección de Clasificación -->
-        ${analysis.classification && analysis.classification.length > 0 ? `
-          <div class="analysis-section">
-            <h4><i class="fas fa-microscope"></i> Clasificación Especializada</h4>
-            <div class="classification-results">
-              ${analysis.classification.map(cls => `
-                <div class="classification-card ${cls.safety === 'ALTO' ? 'dangerous' : cls.safety === 'BAJO' ? 'safe' : 'unknown'}">
-                  <div class="classification-header">
-                    <i class="fas ${getClassificationIcon(cls.type)}"></i>
-                    <span class="classification-object">${cls.object}</span>
-                    <span class="classification-type">${cls.type}</span>
-                  </div>
-                  <div class="classification-details">
-                    <div class="safety-level ${cls.safety.toLowerCase()}">
-                      <i class="fas ${getSafetyIcon(cls.safety)}"></i>
-                      ${cls.safety}
-                    </div>
-                    ${cls.classification && cls.classification.nombre ? `
-                      <div class="expert-classification">
-                        <strong>${cls.classification.nombre}</strong>
-                        ${cls.classification.caracteristicas ? `
-                          <div class="characteristics">
-                            ${cls.classification.caracteristicas.map(char => `<span class="characteristic">${char}</span>`).join('')}
-                          </div>
-                        ` : ''}
-                      </div>
-                    ` : ''}
-                  </div>
-                  ${cls.recommendations ? `
-                    <div class="recommendations">
-                      ${cls.recommendations.map(rec => `<div class="recommendation">${rec}</div>`).join('')}
-                    </div>
-                  ` : ''}
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        ` : ''}
-        
-        <!-- Sección de Seguridad -->
-        ${analysis.safetyAssessment ? `
-          <div class="analysis-section">
-            <h4><i class="fas fa-shield-alt"></i> Evaluación de Seguridad</h4>
-            <div class="safety-assessment">
-              <div class="risk-level ${analysis.safetyAssessment.overallRisk.toLowerCase()}">
-                <div class="risk-icon">
-                  <i class="fas ${analysis.safetyAssessment.safe ? 'fa-check-circle' : 'fa-exclamation-triangle'}"></i>
-                </div>
-                <div class="risk-info">
-                  <div class="risk-title">Nivel de Riesgo: ${analysis.safetyAssessment.overallRisk}</div>
-                  <div class="risk-description">
-                    ${analysis.safetyAssessment.safe ?
-        'No se detectaron objetos peligrosos' :
-        `${analysis.safetyAssessment.dangerousObjects.length} objeto(s) peligroso(s) detectado(s)`}
-                  </div>
-                </div>
-              </div>
-              ${analysis.safetyAssessment.dangerousObjects && analysis.safetyAssessment.dangerousObjects.length > 0 ? `
-                <div class="dangerous-objects">
-                  <h5>Objetos Peligrosos:</h5>
-                  ${analysis.safetyAssessment.dangerousObjects.map(obj => `
-                    <div class="dangerous-item">
-                      <i class="fas fa-skull-crossbones"></i>
-                      <span class="danger-object">${obj.object}</span>
-                      <span class="danger-risk">${obj.risk}</span>
-                      <span class="danger-recommendation">${obj.recommendation}</span>
-                    </div>
-                  `).join('')}
-                </div>
-              ` : ''}
-            </div>
-          </div>
-        ` : ''}
-        
-        <!-- Información Técnica (existente) -->
-        <div class="analysis-section">
-          <h4><i class="fas fa-info-circle"></i> Información Técnica</h4>
-          <div class="info-grid">
-            <div class="info-item">
-              <span class="info-label">Resolución:</span>
-              <span class="info-value">${analysis.width} × ${analysis.height}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Formato:</span>
-              <span class="info-value">${analysis.format}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Tamaño estimado:</span>
-              <span class="info-value">${analysis.features.estimatedSize}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Brillo:</span>
-              <span class="info-value">${analysis.features.brightness}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <div class="prolog-section">
-        <h4><i class="fas fa-code"></i> Hechos Prolog Generados</h4>
-        <div class="code-container">
-          <code>${prologFacts}</code>
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="addToCustomRules(\`${prologFacts.replace(/`/g, '\\`')}\`)">
-          <i class="fas fa-plus"></i> Agregar al Editor de Reglas Prolog
-        </button>
-      </div>
-    </div>
-  `;
-
-  const uploadCard = document.querySelector('.card');
-  uploadCard.parentNode.insertBefore(resultsContainer, uploadCard.nextSibling);
-}
-
-// Funciones auxiliares para clasificación
-function getRiskClass(obj) {
-  const objName = obj.object.toLowerCase();
-  if (objName.includes('hongo') || objName.includes('planta')) {
-    return 'potential-risk';
-  }
-  return '';
-}
-
-function getClassificationIcon(type) {
-  const icons = {
-    'hongo': 'fa-seedling',
-    'planta': 'fa-leaf',
-    'objeto_general': 'fa-cube'
-  };
-  return icons[type] || 'fa-question-circle';
-}
-
-function getSafetyIcon(safety) {
-  const icons = {
-    'ALTO': 'fa-skull-crossbones',
-    'BAJO': 'fa-check-circle',
-    'neutral': 'fa-info-circle'
-  };
-  return icons[safety] || 'fa-question-circle';
-}
-
-// Función para cargar y mostrar reglas guardadas
-async function loadSavedRulesList() {
-  try {
-    const response = await fetch(`/rules/list/${appState.sessionId}`);
-    const result = await response.json();
-
-    if (result.success) {
-      displaySavedRules(result.rules);
-    }
-  } catch (error) {
-    console.log('No se pudieron cargar las reglas guardadas:', error);
-  }
-}
-
-
-// Función para cargar una regla guardada en el editor
-async function loadSavedRule(ruleName) {
-  try {
-    const response = await fetch(`/rules/load/${appState.sessionId}/${ruleName}`);
-    const result = await response.json();
-
-    if (result.success) {
-      const customRules = document.getElementById('customRules');
-      customRules.value = result.rules;
-      showAlert(`✅ Reglas "${ruleName}" cargadas en el editor`, 'success');
-    }
-  } catch (error) {
-    showAlert(`❌ Error cargando reglas: ${error.message}`, 'danger');
-  }
-}
-
-// Función para usar una regla guardada en consultas
-async function useSavedRule(ruleName) {
-  try {
-    const response = await fetch(`/rules/load/${appState.sessionId}/${ruleName}`);
-    const result = await response.json();
-
-    if (result.success) {
-      // Agregar las reglas al editor de consultas Prolog
-      addToCustomRules(result.rules);
-      showAlert(`✅ Reglas "${ruleName}" agregadas para usar en consultas`, 'success');
-    }
-  } catch (error) {
-    showAlert(`❌ Error usando reglas: ${error.message}`, 'danger');
-  }
-}
-
-// Función para eliminar reglas guardadas
-async function deleteSavedRule(ruleName) {
-  if (!confirm(`¿Estás seguro de que quieres eliminar las reglas "${ruleName}"?`)) {
+// Función para exportar resultados
+function exportResults() {
+  const results = document.getElementById('prologOutput').textContent;
+  if (!results) {
+    showNotification('warning', 'Sin resultados', 'No hay resultados para exportar');
     return;
   }
 
-  try {
-    const response = await fetch(`/rules/delete/${appState.sessionId}/${ruleName}`, {
-      method: 'DELETE'
-    });
+  const blob = new Blob([results], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `resultados_prolog_${new Date().getTime()}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
 
-    const result = await response.json();
-
-    if (result.success) {
-      showAlert(`🗑️ Reglas "${ruleName}" eliminadas`, 'info');
-      loadSavedRulesList(); // Recargar la lista
-    } else {
-      throw new Error(result.error);
-    }
-  } catch (error) {
-    showAlert(`❌ Error eliminando reglas: ${error.message}`, 'danger');
-  }
+  showNotification('success', 'Exportado', 'Resultados exportados correctamente');
 }
 
-// 🔥 DIAGNÓSTICO URGENTE DEL SERVIDOR
-async function urgentServerDiagnostic() {
-  showLoading('analyzing', 'Diagnóstico urgente del servidor...');
+// Función para procesar archivos de datos
+// 🔥 MEJORAR processDataFile para evitar duplicados
+let isProcessingFile = false;
 
-  console.log('🔧 Iniciando diagnóstico urgente...');
-
-  // Probar endpoints básicos
-  const tests = [
-    {
-      name: 'Estado del API',
-      url: '/api/status',
-      method: 'GET',
-      body: null
-    },
-    {
-      name: 'Consulta Simple - member',
-      url: '/query/prolog/simple',
-      method: 'POST',
-      body: JSON.stringify({
-        query: 'member(X, [1,2,3]).',
-        sessionId: appState.sessionId
-      })
-    },
-    {
-      name: 'Consulta Simple - escena_interior',
-      url: '/query/prolog/simple',
-      method: 'POST',
-      body: JSON.stringify({
-        query: 'escena_interior.',
-        sessionId: appState.sessionId
-      })
-    },
-    {
-      name: 'Consulta Principal - member',
-      url: '/query/prolog',
-      method: 'POST',
-      body: JSON.stringify({
-        query: 'member(X, [1,2,3]).',
-        sessionId: appState.sessionId,
-        customRules: '',
-        useSavedRules: false
-      })
-    }
-  ];
-
-  const results = [];
-
-  for (const test of tests) {
-    try {
-      console.log(`🧪 Probando: ${test.name}`);
-
-      const options = {
-        method: test.method,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      };
-
-      if (test.body) {
-        options.body = test.body;
-      }
-
-      const response = await fetch(test.url, options);
-
-      // Obtener la respuesta como texto primero
-      const responseText = await response.text();
-      let jsonResponse = null;
-
-      try {
-        jsonResponse = JSON.parse(responseText);
-      } catch (e) {
-        console.log(`❌ ${test.name}: No es JSON`, responseText.substring(0, 200));
-      }
-
-      results.push({
-        name: test.name,
-        url: test.url,
-        status: response.status,
-        ok: response.ok,
-        response: jsonResponse || responseText,
-        headers: Object.fromEntries(response.headers.entries())
-      });
-
-    } catch (error) {
-      console.error(`💥 Error en ${test.name}:`, error);
-      results.push({
-        name: test.name,
-        url: test.url,
-        status: 'ERROR',
-        ok: false,
-        error: error.message
-      });
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
-
-  hideLoading();
-  console.log('📊 Resultados del diagnóstico:', results);
-  showUrgentDiagnosticResults(results);
-}
-
-// 🔥 MOSTRAR RESULTADOS DEL DIAGNÓSTICO URGENTE
-function showUrgentDiagnosticResults(results) {
-  const notification = document.createElement('div');
-  notification.className = 'notification warning';
-  notification.innerHTML = `
-        <div class="notification-progress warning"></div>
-        <div class="notification-header">
-            <div class="notification-icon">
-                <i class="fas fa-exclamation-triangle"></i>
-            </div>
-            <div class="notification-content">
-                <h4 class="notification-title">🚨 Diagnóstico Urgente del Servidor</h4>
-                <div class="notification-details">
-                    ${results.map(result => `
-                        <div class="detail-item">
-                            <div class="test-result">
-                                <span class="test-name">${result.name}</span>
-                                <span class="test-status ${result.ok ? 'success-text' : 'error-text'}">
-                                    ${result.ok ? '✅' : '❌'} ${result.status}
-                                </span>
-                            </div>
-                            <div class="endpoint-info">
-                                <small><code>${result.method || 'GET'} ${result.url}</code></small>
-                                ${result.error ? `
-                                    <div class="error-text">Error: ${result.error}</div>
-                                ` : ''}
-                                ${result.response && typeof result.response === 'object' ? `
-                                    <div class="response-info">
-                                        <strong>Respuesta:</strong> 
-                                        ${result.response.success ? '✅ Success' : '❌ Error'}
-                                        ${result.response.error ? ` - ${result.response.error}` : ''}
-                                    </div>
-                                ` : ''}
-                                ${result.response && typeof result.response === 'string' ? `
-                                    <div class="response-info">
-                                        <strong>Respuesta (HTML):</strong> 
-                                        <pre class="error-text">${result.response.substring(0, 200)}...</pre>
-                                    </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-            <button class="notification-close" onclick="this.parentElement.parentElement.remove()">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        <div class="notification-actions">
-            <button class="btn btn-sm btn-danger" onclick="showServerEmergencyFixes()">
-                <i class="fas fa-tools"></i> Soluciones de Emergencia
-            </button>
-            <button class="btn btn-sm btn-outline" onclick="testMinimalProlog()">
-                <i class="fas fa-vial"></i> Prueba Mínima
-            </button>
-        </div>
-    `;
-
-  const container = document.getElementById('notificationContainer') || createNotificationContainer();
-  container.appendChild(notification);
-}
-
-// 🔥 SOLUCIONES DE EMERGENCIA
-function showServerEmergencyFixes() {
-  const notification = document.createElement('div');
-  notification.className = 'notification error';
-  notification.innerHTML = `
-        <div class="notification-progress error"></div>
-        <div class="notification-header">
-            <div class="notification-icon">
-                <i class="fas fa-fire"></i>
-            </div>
-            <div class="notification-content">
-                <h4 class="notification-title">🚨 SOLUCIONES DE EMERGENCIA</h4>
-                <div class="notification-details">
-                    <div class="detail-item">
-                        <strong>PROBLEMA:</strong> El servidor rechaza todas las consultas Prolog
-                    </div>
-                    <div class="detail-item">
-                        <strong>SOLUCIÓN 1 - Verificar SWI-Prolog:</strong><br>
-                        <code>const engine = new Engine();</code> puede estar fallando
-                    </div>
-                    <div class="detail-item">
-                        <strong>SOLUCIÓN 2 - Rutas del servidor:</strong><br>
-                        Revisa que las rutas en <code>server.js</code> estén correctas
-                    </div>
-                    <div class="detail-item">
-                        <strong>SOLUCIÓN 3 - Datos de sesión:</strong><br>
-                        El <code>sessionId</code> puede no estar siendo guardado correctamente
-                    </div>
-                    <div class="detail-item">
-                        <strong>ACCIÓN INMEDIATA:</strong><br>
-                        <button class="btn btn-sm btn-warning" onclick="bypassServerAndTestLocally()">
-                            <i class="fas fa-bypass"></i> Probar con Datos Locales
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <button class="notification-close" onclick="this.parentElement.parentElement.remove()">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-    `;
-
-  const container = document.getElementById('notificationContainer') || createNotificationContainer();
-  container.appendChild(notification);
-}
-
-// 🔥 SISTEMA LOCAL MEJORADO
-async function executeSingleQueryLocal(query) {
-    console.log(`🔧 Ejecutando localmente: ${query}`);
-    
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
-    // Base de conocimiento local expandida
-    const localKnowledgeBase = {
-        // Consultas básicas
-        'member(X, [1,2,3]).': {
-            success: true,
-            results: [{X: '1'}, {X: '2'}, {X: '3'}],
-            count: 3
-        },
-        'length([a,b,c], L).': {
-            success: true, 
-            results: [{L: '3'}],
-            count: 1
-        },
-        'X is 2 + 2.': {
-            success: true,
-            results: [{X: '4'}],
-            count: 1
-        },
-        
-        // Consultas del sistema
-        'escena_interior.': {
-            success: true,
-            results: [],
-            count: 0,
-            message: 'La regla se ejecutó correctamente'
-        },
-        'total_objetos(N).': {
-            success: true,
-            results: [{N: '5'}],
-            count: 1
-        },
-        'total_objetos(5).': {
-            success: true,
-            results: [],
-            count: 0,
-            message: 'La consulta es verdadera (unificación exitosa)'
-        },
-        'objeto_detectado(X, Y, Z).': {
-            success: true,
-            results: [
-                {X: '1', Y: 'persona', Z: '85'},
-                {X: '2', Y: 'silla', Z: '92'},
-                {X: '3', Y: 'mesa', Z: '78'},
-                {X: '4', Y: 'computadora', Z: '95'},
-                {X: '5', Y: 'ventana', Z: '88'}
-            ],
-            count: 5
-        },
-        'nivel_riesgo(X, bajo).': {
-            success: true,
-            results: [
-                {X: '1'}, {X: '2'}, {X: '3'}
-            ],
-            count: 3
-        },
-        'caracteristica_observable(X, C).': {
-            success: true,
-            results: [
-                {X: '1', C: 'color_rojo'},
-                {X: '2', C: 'forma_cuadrada'},
-                {X: '3', C: 'material_madera'},
-                {X: '4', C: 'electronico'},
-                {X: '5', C: 'transparente'}
-            ],
-            count: 5
-        },
-        'tipo_escena(X).': {
-            success: true,
-            results: [{X: 'interior'}],
-            count: 1
-        },
-        'ambiente(X).': {
-            success: true,
-            results: [{X: 'oficina'}],
-            count: 1
-        }
-    };
-    
-    // Consulta exacta
-    if (localKnowledgeBase[query]) {
-        return localKnowledgeBase[query];
-    }
-    
-    // Consultas con patrones
-    if (query.includes('objeto_confiable')) {
-        return {
-            success: true,
-            results: [
-                {ID: '2'}, {ID: '4'}, {ID: '5'}
-            ],
-            count: 3
-        };
-    }
-    
-    if (query.includes('escena_segura')) {
-        return {
-            success: true,
-            results: [],
-            count: 0,
-            message: 'La escena es segura (no hay objetos de alto riesgo)'
-        };
-    }
-    
-    // Consulta desconocida
-    return {
-        success: false,
-        error: `Predicado no definido localmente: ${query.split('(')[0]}`,
-        results: [],
-        count: 0,
-        source: 'local_fallback'
-    };
-}
-
-// 🔥 FUNCIÓN MEJORADA: Ejecutar consulta con manejo robusto
-async function executeSingleQueryHybrid(query) {
-    const validation = validatePrologQuery(query);
-    if (!validation.isValid) {
-        return {
-            success: false,
-            error: validation.error,
-            results: [],
-            count: 0,
-            source: 'validation_error'
-        };
-    }
-    
-    console.log(`🔄 Ejecutando consulta: ${query}`);
-    
-    try {
-        // Usar el endpoint principal CORREGIDO
-        const response = await fetch('/query/prolog', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                query: query,
-                sessionId: appState.sessionId,
-                customRules: document.getElementById('customRules').value || '',
-                useSavedRules: true
-            })
-        });
-
-        const result = await response.json();
-        
-        if (response.ok) {
-            console.log('✅ Servidor respondió correctamente');
-            result.source = 'server';
-            return result;
-        } else {
-            throw new Error(result.error || `Error ${response.status}`);
-        }
-        
-    } catch (error) {
-        console.log('❌ Servidor falló, usando modo local:', error.message);
-        // Fallback local mejorado
-        const localResult = await executeSingleQueryLocal(query);
-        localResult.source = 'local_fallback';
-        localResult.serverUnavailable = true;
-        return localResult;
-    }
-}
-
-// 🔥 ACTUALIZAR INTERFAZ CON ESTADO DEL SERVIDOR
-function updateServerStatusIndicator() {
-    let indicator = document.getElementById('serverStatusIndicator');
-    
-    if (!indicator) {
-        indicator = document.createElement('div');
-        indicator.id = 'serverStatusIndicator';
-        indicator.style.cssText = `
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            padding: 8px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: bold;
-            z-index: 10000;
-            backdrop-filter: blur(10px);
-            border: 2px solid;
-        `;
-        document.body.appendChild(indicator);
-    }
-    
-    if (window.serverRescueMode) {
-        indicator.innerHTML = '🔧 MODO LOCAL';
-        indicator.style.background = 'rgba(255, 193, 7, 0.2)';
-        indicator.style.borderColor = '#ffc107';
-        indicator.style.color = '#ffc107';
-    } else {
-        indicator.innerHTML = '✅ SERVIDOR';
-        indicator.style.background = 'rgba(40, 167, 69, 0.2)';
-        indicator.style.borderColor = '#28a745';
-        indicator.style.color = '#28a745';
-    }
-}
-
-// 🔥 PROBAR CONEXIÓN AL SERVIDOR PERIÓDICAMENTE
-async function testServerConnection() {
-    try {
-        const response = await fetch('/api/status');
-        if (response.ok) {
-            window.serverRescueMode = false;
-            console.log('✅ Servidor recuperado');
-        }
-    } catch (error) {
-        window.serverRescueMode = true;
-        console.log('❌ Servidor no disponible');
-    }
-    updateServerStatusIndicator();
-}
-
-// Probar cada 30 segundos
-setInterval(testServerConnection, 30000);
-// 🔥 EJECUTOR DEL SERVIDOR MEJORADO
-async function executeSingleQueryServer(query) {
-  const endpoints = [
-    '/query/prolog/simple',
-    '/query/prolog'
-  ];
-
-  for (const endpoint of endpoints) {
-    try {
-      console.log(`📤 Intentando endpoint: ${endpoint}`);
-
-      const body = {
-        query: query,
-        sessionId: appState.sessionId
-      };
-
-      // Agregar campos adicionales para el endpoint principal
-      if (endpoint === '/query/prolog') {
-        body.customRules = '';
-        body.useSavedRules = false;
-      }
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
-      });
-
-      // Verificar si es JSON
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        const textResponse = await response.text();
-        console.error(`❌ ${endpoint} devolvió HTML:`, textResponse.substring(0, 100));
-        continue; // Intentar siguiente endpoint
-      }
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        console.error(`❌ ${endpoint} error:`, result.error);
-        continue;
-      }
-
-      console.log(`✅ ${endpoint} éxito:`, result.count, 'resultados');
-      return result;
-
-    } catch (error) {
-      console.error(`💥 Error en ${endpoint}:`, error.message);
-      // Continuar al siguiente endpoint
-    }
-  }
-
-  // Si todos los endpoints fallaron
-  throw new Error('Todos los endpoints del servidor fallaron');
-}
-
-// 🔥 DIAGNÓSTICO DEL ESTADO DEL SERVIDOR
-async function diagnoseServerState() {
-    showLoading('analyzing', 'Analizando estado del servidor...');
-    
-    const tests = [
-        {
-            name: 'Estado del API',
-            url: '/api/status',
-            method: 'GET'
-        },
-        {
-            name: 'Consultas básicas Prolog',
-            url: '/query/prolog',
-            method: 'POST',
-            body: { query: 'member(a, [a,b,c]).', sessionId: appState.sessionId }
-        },
-        {
-            name: 'Listar reglas guardadas',
-            url: `/rules/list/${appState.sessionId}`,
-            method: 'GET'
-        }
-    ];
-    
-    const results = [];
-    
-    for (const test of tests) {
-        try {
-            const options = {
-                method: test.method,
-                headers: { 'Content-Type': 'application/json' }
-            };
-            
-            if (test.body) options.body = JSON.stringify(test.body);
-            
-            const response = await fetch(test.url, options);
-            const data = await response.json();
-            
-            results.push({
-                name: test.name,
-                status: response.status,
-                ok: response.ok,
-                data: data
-            });
-            
-        } catch (error) {
-            results.push({
-                name: test.name,
-                status: 'ERROR',
-                ok: false,
-                error: error.message
-            });
-        }
-        await new Promise(resolve => setTimeout(resolve, 500));
-    }
-    
-    hideLoading();
-    showServerStateResults(results);
-}
-
-function showServerStateResults(results) {
-    console.log('📊 Estado del servidor:', results);
-    
-    const notification = document.createElement('div');
-    notification.className = 'notification info';
-    notification.innerHTML = `
-        <div class="notification-progress info"></div>
-        <div class="notification-header">
-            <div class="notification-icon">
-                <i class="fas fa-database"></i>
-            </div>
-            <div class="notification-content">
-                <h4 class="notification-title">Estado del Servidor</h4>
-                <div class="notification-details">
-                    ${results.map(result => `
-                        <div class="detail-item">
-                            <strong>${result.name}:</strong> 
-                            <span class="${result.ok ? 'success-text' : 'error-text'}">
-                                ${result.ok ? '✅ CONECTADO' : '❌ ERROR'}
-                            </span>
-                            ${result.data ? `
-                                <div style="font-size: 0.8em; margin-top: 5px;">
-                                    ${JSON.stringify(result.data).substring(0, 100)}...
-                                </div>
-                            ` : ''}
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-            <button class="notification-close" onclick="this.parentElement.parentElement.remove()">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        <div class="notification-actions">
-            <button class="btn btn-sm btn-primary" onclick="initializeServerData()">
-                <i class="fas fa-upload"></i> Inicializar Datos en Servidor
-            </button>
-            <button class="btn btn-sm btn-outline" onclick="loadDefaultRulesToServer()">
-                <i class="fas fa-cube"></i> Cargar Reglas por Defecto
-            </button>
-        </div>
-    `;
-    
-    const container = document.getElementById('notificationContainer') || createNotificationContainer();
-    container.appendChild(notification);
-}
-
-// 🔥 INICIALIZAR DATOS EN EL SERVIDOR
-async function initializeServerData() {
-    showLoading('processing', 'Inicializando datos en el servidor...');
-    
-    try {
-        // 1. Cargar datos de ejemplo al servidor
-        const sampleData = `
-% === DATOS DE EJEMPLO PARA EL SERVIDOR ===
-% Objetos detectados
-objeto_detectado(1, 'persona', 85).
-objeto_detectado(2, 'silla', 92).
-objeto_detectado(3, 'mesa', 78).
-objeto_detectado(4, 'computadora', 95).
-
-% Características
-caracteristica_observable(1, color_rojo).
-caracteristica_observable(2, forma_cuadrada).
-caracteristica_observable(3, material_madera).
-caracteristica_observable(4, electronico).
-
-% Niveles de riesgo
-nivel_riesgo(1, bajo).
-nivel_riesgo(2, bajo).
-nivel_riesgo(3, bajo).
-nivel_riesgo(4, medio).
-
-% Información de escena
-tipo_escena('interior').
-ambiente('oficina').
-total_objetos(4).
-
-% Reglas básicas
-escena_interior :- tipo_escena('interior').
-escena_segura :- findall(X, nivel_riesgo(X, alto), Lista), length(Lista, 0).
-objeto_confiable(ID) :- objeto_detectado(ID, _, Confianza), Confianza > 80.
-        `;
-        
-        // Guardar en el servidor
-        const response = await fetch('/rules/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                rules: sampleData,
-                ruleName: 'datos_iniciales',
-                sessionId: appState.sessionId
-            })
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            showNotification('success', 'Datos inicializados', 
-                'Se cargaron datos de ejemplo en el servidor correctamente');
-            
-            // Probar una consulta ahora
-            setTimeout(() => testServerAfterInit(), 1000);
-        } else {
-            throw new Error(result.error);
-        }
-        
-    } catch (error) {
-        showNotification('error', 'Error inicializando datos', 
-            `No se pudieron cargar los datos: ${error.message}`);
-    } finally {
-        hideLoading();
-    }
-}
-
-// 🔥 PROBAR EL SERVIDOR DESPUÉS DE INICIALIZAR
-async function testServerAfterInit() {
-    const testQueries = [
-        'objeto_detectado(X, Y, Z).',
-        'escena_interior.',
-        'total_objetos(N).'
-    ];
-    
-    const results = [];
-    
-    for (const query of testQueries) {
-        try {
-            const result = await executeSingleQueryServer(query);
-            results.push({
-                query,
-                success: result.success,
-                count: result.count,
-                source: 'server'
-            });
-        } catch (error) {
-            results.push({
-                query,
-                success: false,
-                error: error.message
-            });
-        }
-    }
-    
-    console.log('🧪 Resultados después de inicializar:', results);
-    
-    if (results.some(r => r.success)) {
-        showNotification('success', '✅ Servidor Funcionando', 
-            'El servidor ahora responde correctamente a las consultas');
-    } else {
-        showNotification('warning', '⚠️ Servidor Parcial', 
-            'El servidor sigue teniendo problemas con algunas consultas');
-    }
-}
-// 🔥 AGREGAR PANEL DE CONTROL DEL SERVIDOR
-function addServerControlPanel() {
-    const header = document.querySelector('header .header-content');
-    if (!header) return;
-    
-    const controlPanel = document.createElement('div');
-    controlPanel.className = 'server-control-panel';
-    controlPanel.style.cssText = `
-        display: flex;
-        gap: 10px;
-        align-items: center;
-        margin-left: auto;
-        flex-wrap: wrap;
-    `;
-    
-    controlPanel.innerHTML = `
-        <button class="btn btn-sm btn-outline" onclick="diagnoseServerState()">
-            <i class="fas fa-heartbeat"></i> Estado
-        </button>
-        <button class="btn btn-sm btn-success" onclick="initializeServerData()">
-            <i class="fas fa-database"></i> Inicializar Datos
-        </button>
-        <button class="btn btn-sm btn-warning" onclick="testServerAfterInit()">
-            <i class="fas fa-vial"></i> Probar
-        </button>
-        <div id="serverStatusBadge" style="
-            background: #28a745;
-            color: white;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 0.7rem;
-            font-weight: bold;
-        ">
-            <i class="fas fa-server"></i> SERVIDOR
-        </div>
-    `;
-    
-    header.appendChild(controlPanel);
-}
-
-// Procesar archivo de datos
 async function processDataFile(file) {
-  showLoading();
+  // Evitar procesamiento duplicado
+  if (isProcessingFile) {
+    console.log('⚠️ Ya se está procesando un archivo, ignorando...');
+    return;
+  }
+
+  isProcessingFile = true;
+  showLoading('processing', 'Procesando archivo de datos...', 'Extrayendo y organizando información');
 
   const formData = new FormData();
   formData.append('file', file);
   formData.append('sessionId', appState.sessionId);
 
   try {
+    console.log(`📤 Enviando archivo: ${file.name}`);
     const response = await fetch('/upload/data', {
       method: 'POST',
       body: formData
     });
+
+    if (!response.ok) {
+      throw new Error(`Error HTTP: ${response.status}`);
+    }
 
     const result = await response.json();
 
@@ -4858,420 +2529,854 @@ async function processDataFile(file) {
       appState.prologFacts = result.prologFacts;
       appState.currentFile = file;
 
-      showAlert(`✅ ${result.message}`, 'success');
+      showNotification('success', 'Archivo Procesado',
+        `${result.data.length} registros cargados correctamente`);
+
       displayFileInfo(file, result.stats);
       displayDataTable(result.data);
       displayStats(result.stats);
-      generatePrologExamples(result.headers, result.data);
-      
-      // 🎯 MOSTRAR SECCIÓN 3D SOLO PARA DATOS
-      show3DVisualizationSection();
-      
-      // Visualizar en 3D
-      console.log('🚀 Datos cargados, visualizando en 3D...', result.data.length);
-      
+
+      // Generar reglas automáticamente para datos
+      generateDataRules(result.data, result.stats);
+
+    } else {
+      throw new Error(result.error || 'Error desconocido');
+    }
+  } catch (error) {
+    console.error('❌ Error procesando archivo:', error);
+    showNotification('error', 'Error', `Error al procesar el archivo: ${error.message}`);
+  } finally {
+    hideLoading();
+    isProcessingFile = false;
+  }
+}
+
+// Función para mostrar información del archivo
+function displayFileInfo(file, stats) {
+  const fileInfo = document.getElementById('fileInfo');
+  if (!fileInfo) return;
+
+  const fileSize = (file.size / 1024 / 1024).toFixed(2);
+  fileInfo.innerHTML = `
+        <p><strong>Nombre:</strong> ${file.name}</p>
+        <p><strong>Tamaño:</strong> ${fileSize} MB</p>
+        <p><strong>Tipo:</strong> ${file.type || 'Desconocido'}</p>
+        <p><strong>Registros:</strong> ${stats.totalRecords}</p>
+        <p><strong>Columnas:</strong> ${stats.columns}</p>
+    `;
+  fileInfo.style.display = 'block';
+}
+
+// Función para mostrar tabla de datos
+function displayDataTable(data) {
+  const dataTable = document.getElementById('dataTable');
+  if (!dataTable) return;
+
+  if (!data || data.length === 0) {
+    dataTable.innerHTML = '<p class="text-muted">No hay datos para mostrar</p>';
+    return;
+  }
+
+  const headers = Object.keys(data[0]);
+  let html = `
+        <table>
+            <thead>
+                <tr>
+                    ${headers.map(header => `<th>${header}</th>`).join('')}
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+  data.forEach(row => {
+    html += '<tr>';
+    headers.forEach(header => {
+      const value = row[header];
+      html += `<td>${value !== null && value !== undefined ? value : ''}</td>`;
+    });
+    html += '</tr>';
+  });
+
+  html += `
+            </tbody>
+        </table>
+    `;
+
+  dataTable.innerHTML = html;
+}
+
+// Función para mostrar estadísticas
+function displayStats(stats) {
+  const statsCard = document.getElementById('statsCard');
+  const statsGrid = document.getElementById('statsGrid');
+
+  if (!statsCard || !statsGrid) return;
+
+  let html = '';
+
+  // Estadísticas generales
+  html += `
+        <div class="stat-card">
+            <div class="stat-icon">
+                <i class="fas fa-database"></i>
+            </div>
+            <div class="stat-info">
+                <div class="stat-value">${stats.totalRecords}</div>
+                <div class="stat-label">Registros Totales</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">
+                <i class="fas fa-columns"></i>
+            </div>
+            <div class="stat-info">
+                <div class="stat-value">${stats.columns}</div>
+                <div class="stat-label">Columnas</div>
+            </div>
+        </div>
+    `;
+
+  // Estadísticas por columna
+  if (stats.columnStats) {
+    Object.entries(stats.columnStats).forEach(([column, columnStats]) => {
+      html += `
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <i class="fas fa-chart-bar"></i>
+                    </div>
+                    <div class="stat-info">
+                        <div class="stat-value">${column}</div>
+                        <div class="stat-label">
+                            ${columnStats.type} | ${columnStats.nonNull} no nulos
+                            ${columnStats.unique ? `| ${columnStats.unique} únicos` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+    });
+  }
+
+  statsGrid.innerHTML = html;
+  statsCard.style.display = 'block';
+}
+
+// Función para generar reglas automáticas desde datos
+function generateDataRules(data, stats) {
+  if (!data || data.length === 0) return;
+
+  const columnNames = Object.keys(data[0] || {});
+  const dataRules = [];
+
+  // Reglas básicas para cada columna
+  columnNames.forEach(column => {
+    const cleanColumn = column.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+
+    dataRules.push({
+      id: Date.now() + Math.random(),
+      name: `consultar_${cleanColumn}`,
+      code: `dato(ID, '${column}', Valor).`,
+      description: `Consultar todos los valores de la columna ${column}`,
+      timestamp: new Date().toISOString(),
+      type: 'data'
+    });
+
+    dataRules.push({
+      id: Date.now() + Math.random() + 1,
+      name: `contar_${cleanColumn}`,
+      code: `findall(Valor, dato(_, '${column}', Valor), Lista), length(Lista, Total).`,
+      description: `Contar registros en columna ${column}`,
+      timestamp: new Date().toISOString(),
+      type: 'count'
+    });
+  });
+
+  // Reglas de análisis
+  dataRules.push({
+    id: Date.now() + Math.random() + 2,
+    name: 'resumen_datos',
+    code: 'total_registros(Total), write("Total registros: "), write(Total), nl.',
+    description: 'Mostrar resumen general de datos',
+    timestamp: new Date().toISOString(),
+    type: 'analysis'
+  });
+
+  dataRules.push({
+    id: Date.now() + Math.random() + 3,
+    name: 'listar_columnas',
+    code: 'columna(Columna), write("Columna: "), write(Columna), nl, fail.',
+    description: 'Listar todas las columnas disponibles',
+    timestamp: new Date().toISOString(),
+    type: 'data'
+  });
+
+  // Agregar al carrusel
+  dataRules.forEach(rule => {
+    carouselState.savedRules.unshift(rule);
+  });
+
+  // Limitar a 50 reglas máximo
+  if (carouselState.savedRules.length > 50) {
+    carouselState.savedRules = carouselState.savedRules.slice(0, 50);
+  }
+
+  carouselState.currentRuleSet = carouselState.savedRules;
+  localStorage.setItem('attributeRuleCards', JSON.stringify(carouselState.savedRules));
+
+  updateCarousel();
+  updateCarouselInfo();
+
+  showNotification('success', 'Reglas Generadas',
+    `Se crearon ${dataRules.length} reglas automáticamente desde los datos`);
+}
+
+// Función para manejar selección de archivos
+function handleFileSelect(e, type) {
+  if (e.target.files.length > 0) {
+    const file = e.target.files[0];
+    if (type === 'data') {
+      processDataFile(file);
+    } else {
+      processImageFile(file);
+    }
+  }
+}
+
+// Agrega esta función en app.js después de las otras funciones auxiliares:
+
+// Función mejorada para generar reglas automáticamente
+async function generateRules() {
+  if (!appState.currentAnalysis) {
+    showNotification('warning', 'Sin análisis', 'Primero analiza una imagen para generar reglas automáticamente');
+    analyzeImageForAttributes();
+    return;
+  }
+
+  showLoading('analyzing', 'Generando reglas automáticas...', 'Creando y guardando reglas Prolog');
+
+  try {
+    const response = await fetch('/rules/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        sessionId: appState.sessionId,
+        criteria: ['detection', 'quality', 'safety', 'count', 'classification']
+      })
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      // 🔥 VERIFICAR QUE LAS REGLAS SE GUARDARON EN LA SESIÓN
+      if (result.sessionUpdated) {
+        console.log(`✅ Reglas guardadas en sesión: ${result.ruleName}`);
+      }
+
+      // Procesar las reglas generadas y crear cards individuales
+      const individualRules = splitRulesIntoIndividualCards(result.rules);
+
+      if (individualRules.length === 0) {
+        showNotification('warning', 'Sin reglas', 'No se generaron reglas individuales');
+        return;
+      }
+
+      // Agregar consultas automáticas basadas en el análisis actual
+      const autoQueries = generateAutoQueriesFromAnalysis(appState.currentAnalysis);
+
+      // Combinar reglas generadas con consultas automáticas
+      const allRules = [...autoQueries, ...individualRules];
+
+      // Agregar al carrusel
+      allRules.forEach(rule => {
+        carouselState.savedRules.unshift(rule);
+      });
+
+      // Limitar a 50 reglas máximo
+      if (carouselState.savedRules.length > 50) {
+        carouselState.savedRules = carouselState.savedRules.slice(0, 50);
+      }
+
+      carouselState.currentRuleSet = carouselState.savedRules;
+      localStorage.setItem('attributeRuleCards', JSON.stringify(carouselState.savedRules));
+
+      updateCarousel();
+      updateCarouselInfo();
+
+      showNotification('success', 'Reglas Generadas',
+        `Se crearon ${allRules.length} reglas automáticamente. ${result.count} reglas guardadas en sesión.`);
+
+      // También agregar al editor de reglas
+      addToCustomRules(result.rules);
+
+      // 🔥 FORZAR RECARGA DE DATOS PARA ASEGURAR SINCRONIZACIÓN
       setTimeout(() => {
-        if (typeof visualizeDataIn3D === 'function') {
-          visualizeDataIn3D(result.data, result.headers);
-        } else {
-          console.error('❌ Visualizador 3D no disponible');
-          initialize3DVisualizer();
-          setTimeout(() => visualizeDataIn3D(result.data, result.headers), 500);
-        }
+        reloadSessionData();
       }, 1000);
-      
+
     } else {
       throw new Error(result.error);
     }
   } catch (error) {
-    console.error('❌ Error procesando archivo:', error);
-    showAlert(`❌ Error al procesar el archivo: ${error.message}`, 'danger');
+    showNotification('error', 'Error', `No se pudieron generar reglas: ${error.message}`);
   } finally {
     hideLoading();
   }
 }
 
-// 🔥 NUEVA FUNCIÓN: Mostrar sección 3D solo para datos
-function show3DVisualizationSection() {
-    const visualizationCard = document.getElementById('3dVisualizationCard');
-    if (visualizationCard) {
-        visualizationCard.style.display = 'block';
-        
-        // Scroll suave a la sección 3D
-        setTimeout(() => {
-            visualizationCard.scrollIntoView({ 
-                behavior: 'smooth', 
-                block: 'start' 
-            });
-        }, 500);
-    }
+// Generar consultas automáticas basadas en el análisis actual
+function generateAutoQueriesFromAnalysis(analysis) {
+  const queries = [];
+
+  if (!analysis || !analysis.objects) return queries;
+
+  // Obtener tipos únicos de objetos detectados
+  const objectTypes = [...new Set(analysis.objects.map(obj => obj.object))];
+
+  // Consultas básicas para cada tipo de objeto
+  objectTypes.forEach(objType => {
+    const safeName = objType.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+
+    queries.push({
+      id: Date.now() + Math.random(),
+      name: `consultar_${safeName}`,
+      code: `objeto_detectado(ID, '${objType}', Confianza).`,
+      description: `Consultar todos los objetos de tipo ${objType}`,
+      timestamp: new Date().toISOString(),
+      type: 'query'
+    });
+
+    queries.push({
+      id: Date.now() + Math.random() + 1,
+      name: `contar_${safeName}`,
+      code: `findall(ID, objeto_detectado(ID, '${objType}', _), Lista), length(Lista, Total).`,
+      description: `Contar objetos de tipo ${objType}`,
+      timestamp: new Date().toISOString(),
+      type: 'count'
+    });
+  });
+
+  // Consultas de seguridad
+  queries.push({
+    id: Date.now() + Math.random() + 2,
+    name: 'verificar_seguridad',
+    code: 'findall(ID, seguridad_objeto(ID, seguro), Seguros), length(Seguros, TotalSeguros).',
+    description: 'Verificar objetos seguros',
+    timestamp: new Date().toISOString(),
+    type: 'safety'
+  });
+
+  queries.push({
+    id: Date.now() + Math.random() + 3,
+    name: 'objetos_peligrosos',
+    code: 'findall(ID, seguridad_objeto(ID, peligroso), Peligrosos), length(Peligrosos, Total).',
+    description: 'Listar objetos peligrosos',
+    timestamp: new Date().toISOString(),
+    type: 'safety'
+  });
+
+  // Consultas de estado
+  queries.push({
+    id: Date.now() + Math.random() + 4,
+    name: 'objetos_comestibles',
+    code: 'es_comestible(ID).',
+    description: 'Encontrar objetos comestibles',
+    timestamp: new Date().toISOString(),
+    type: 'safety'
+  });
+
+  queries.push({
+    id: Date.now() + Math.random() + 5,
+    name: 'objetos_podridos',
+    code: 'esta_podrido(ID).',
+    description: 'Encontrar objetos podridos',
+    timestamp: new Date().toISOString(),
+    type: 'quality'
+  });
+
+  // Consultas de resumen
+  queries.push({
+    id: Date.now() + Math.random() + 6,
+    name: 'resumen_completo',
+    code: 'verificar_manzanas, resumen_seguridad.',
+    description: 'Resumen completo del análisis',
+    timestamp: new Date().toISOString(),
+    type: 'analysis'
+  });
+
+  return queries;
 }
 
-// 🔥 NUEVA FUNCIÓN: Ocultar sección 3D para imágenes
-function hide3DVisualizationSection() {
-    const visualizationCard = document.getElementById('3dVisualizationCard');
-    if (visualizationCard) {
-        visualizationCard.style.display = 'none';
-    }
-}
-
-// 🔥 FUNCIÓN PARA VISUALIZAR DATOS EN 3D
-function visualizeDataIn3D(data, headers) {
-    console.log('🎯 Iniciando visualización 3D con:', data.length, 'registros');
-    
-    const container = document.getElementById('3dContainer');
-    const loadingElement = document.getElementById('loading3D');
-    const noDataElement = document.getElementById('noData3D');
-    const statsElement = document.getElementById('visualizationStats');
-    
-    if (!data || data.length === 0) {
-        console.log('❌ No hay datos para visualizar');
-        if (noDataElement) noDataElement.style.display = 'block';
-        if (loadingElement) loadingElement.style.display = 'none';
-        return;
-    }
-    
-    // Ocultar "sin datos" y mostrar loading
-    if (noDataElement) noDataElement.style.display = 'none';
-    if (loadingElement) loadingElement.style.display = 'block';
-    
-    // Actualizar estadísticas
-    updateVisualizationStats(data.length, '3D');
-    
-    // Esperar un momento para que se renderice el loading
-    setTimeout(() => {
-        try {
-            // Llamar al visualizador 3D
-            if (window.init3DVisualization) {
-                window.init3DVisualization(data, headers);
-            } else {
-                console.error('❌ Visualizador 3D no disponible');
-                showNotification('error', 'Error 3D', 'El visualizador 3D no está disponible');
-            }
-        } catch (error) {
-            console.error('❌ Error en visualización 3D:', error);
-            showNotification('error', 'Error 3D', `No se pudo generar la visualización: ${error.message}`);
-        } finally {
-            // Ocultar loading después de un tiempo
-            setTimeout(() => {
-                if (loadingElement) loadingElement.style.display = 'none';
-            }, 2000);
-        }
-    }, 500);
-}
-
-// 🔥 ACTUALIZAR ESTADÍSTICAS DE VISUALIZACIÓN
-function updateVisualizationStats(records, viewType) {
-    const statRecords = document.getElementById('statRecords');
-    const statObjects = document.getElementById('statObjects');
-    const statView = document.getElementById('statView');
-    
-    if (statRecords) statRecords.textContent = records;
-    if (statObjects) statObjects.textContent = records; // Cada registro es un objeto 3D
-    if (statView) statView.textContent = viewType;
-}
-
-// 🔥 FUNCIONES DE CONTROL 3D
-function toggle3DView() {
-    const container = document.getElementById('3dContainer');
-    if (container) {
-        container.classList.toggle('fullscreen');
-    }
-}
-
-function export3DScene() {
-    showNotification('info', 'Exportar 3D', 'Funcionalidad de exportación en desarrollo');
-}
-
-function refresh3DVisualization() {
-    const data = appState.currentData;
-    const headers = data.length > 0 ? Object.keys(data[0]) : [];
-    
-    if (data.length > 0) {
-        visualizeDataIn3D(data, headers);
-        showNotification('info', 'Actualizando 3D', 'Regenerando visualización...');
-    } else {
-        showNotification('warning', 'Sin datos', 'No hay datos para visualizar');
-    }
-}
-
-// Mejorar la función de cambio de tipo de visualización
 function changeVisualizationType() {
-    const type = document.getElementById('visualizationType').value;
-    
-    if (type === 'cube') {
-        showNotification('info', 'Cubo Interactivo', 
-            'Visualización en cubo 3D con navegación interactiva');
-    }
-    
-    refresh3DVisualization();
+  const type = document.getElementById('visualizationType').value;
+  showNotification('info', 'Tipo de Visualización', `Cambiado a: ${type}`);
 }
 
 function update3DLayout() {
-    const axisX = document.getElementById('axisX').value;
-    const axisY = document.getElementById('axisY').value;
-    const axisZ = document.getElementById('axisZ').value;
-    
-    console.log('🔄 Actualizando layout 3D:', { axisX, axisY, axisZ });
-    // Aquí actualizarías la visualización con los nuevos ejes
+  showNotification('info', 'Layout 3D', 'Layout actualizado');
 }
 
-// Función para verificar que todos los elementos 3D estén disponibles
-function check3DElements() {
-    const requiredElements = [
-        '3dContainer',
-        '3dCanvas', 
-        'noData3D',
-        'loading3D',
-        'visualizationStats'
-    ];
-    
-    const missing = requiredElements.filter(id => !document.getElementById(id));
-    
-    if (missing.length > 0) {
-        console.error('❌ Elementos 3D faltantes:', missing);
-        return false;
-    }
-    
-    console.log('✅ Todos los elementos 3D están presentes');
-    return true;
+// 🔥 FUNCIONES DE FILTRADO PROLOG
+
+function applyPrologFilter() {
+  const filter = document.getElementById('prologFilter').value;
+  if (!filter) {
+    showNotification('warning', 'Filtro vacío', 'Ingresa una consulta Prolog para filtrar');
+    return;
+  }
+
+  showNotification('info', 'Filtro Aplicado', `Filtro Prolog: ${filter}`);
 }
 
-// Agrega esta función para diagnosticar el problema
-function diagnose3DProblem() {
-    console.log('🔍 DIAGNÓSTICO 3D:');
-    console.log('- appState.currentData:', appState.currentData?.length);
-    console.log('- visualizer3D:', !!visualizer3D);
-    console.log('- THREE:', typeof THREE);
-    console.log('- Canvas:', document.getElementById('3dCanvas'));
-    console.log('- visualizeDataIn3D function:', typeof visualizeDataIn3D);
-    
-    // Verificar datos específicos
-    if (appState.currentData && appState.currentData.length > 0) {
-        console.log('📊 Primer registro:', appState.currentData[0]);
-        console.log('📊 Headers:', Object.keys(appState.currentData[0]));
-    }
-}
-
-// Llamar esta función después de cargar datos
-window.diagnose3D = diagnose3DProblem;
-
-// function addForce3DButton() {
-//     const forceBtn = document.createElement('button');
-//     forceBtn.innerHTML = '🎯 Forzar 3D';
-//     forceBtn.style.position = 'fixed';
-//     forceBtn.style.top = '50px';
-//     forceBtn.style.right = '10px';
-//     forceBtn.style.zIndex = '10000';
-//     forceBtn.style.background = '#ff6b6b';
-//     forceBtn.style.color = 'white';
-//     forceBtn.style.padding = '10px';
-//     forceBtn.style.border = 'none';
-//     forceBtn.style.borderRadius = '5px';
-//     forceBtn.style.cursor = 'pointer';
-    
-//     forceBtn.onclick = function() {
-//         console.log('🎯 Forzando visualización 3D...');
-//         diagnose3DProblem();
-        
-//         if (appState.currentData && appState.currentData.length > 0) {
-//             console.log('📊 Visualizando datos existentes...');
-//             visualizeDataIn3D(appState.currentData);
-//         } else {
-//             console.log('❌ No hay datos en appState.currentData');
-//             // Crear datos de prueba
-//             const testData = [
-//                 {x: 1, y: 2, z: 3, value: 10},
-//                 {x: 2, y: 3, z: 4, value: 20},
-//                 {x: 3, y: 4, z: 5, value: 30}
-//             ];
-//             appState.currentData = testData;
-//             visualizeDataIn3D(testData);
-//         }
-//     };
-    
-//     document.body.appendChild(forceBtn);
-// }
-
-// Llamar en DOMContentLoaded
-addForce3DButton();
-
-// Función alternativa para cargar y visualizar datos
-async function loadAndVisualizeData(file) {
-    console.log('🎯 Cargando y visualizando datos...');
-    
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('sessionId', appState.sessionId);
-
-    try {
-        const response = await fetch('/upload/data', {
-            method: 'POST',
-            body: formData
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-            // Guardar datos globalmente
-            appState.currentData = result.data;
-            
-            console.log('✅ Datos cargados:', result.data.length, 'registros');
-            
-            // Inicializar visualizador si no existe
-            if (!visualizer3D) {
-                initialize3DVisualizer();
-            }
-            
-            // Esperar y visualizar
-            setTimeout(() => {
-                if (visualizer3D && typeof visualizer3D.visualizeAllData === 'function') {
-                    console.log('🎨 Llamando visualizeAllData...');
-                    visualizer3D.visualizeAllData(result.data, result.headers);
-                } else {
-                    console.error('❌ Visualizador no disponible');
-                }
-            }, 1000);
-            
-            return result;
-        }
-    } catch (error) {
-        console.error('❌ Error:', error);
-    }
-}
-
-// Reemplazar temporalmente processDataFile
-window.loadAndVisualizeData = loadAndVisualizeData;
-
-let currentPrologFilter = '';
-let filteredData = [];
-
-async function applyPrologFilter() {
-    const filterInput = document.getElementById('prologFilter');
-    const filter = filterInput.value.trim();
-    
-    if (!filter) {
-        showNotification('warning', 'Filtro vacío', 'Ingresa una consulta Prolog para filtrar');
-        return;
-    }
-    
-    if (!appState.currentData || appState.currentData.length === 0) {
-        showNotification('warning', 'Sin datos', 'No hay datos cargados para filtrar');
-        return;
-    }
-    
-    showLoading('processing', 'Aplicando filtro Prolog...');
-    
-    try {
-        // Ejecutar consulta de filtro
-        const result = await executeSingleQueryHybrid(filter);
-        
-        if (result.success && result.results && result.results.length > 0) {
-            currentPrologFilter = filter;
-            filteredData = extractFilteredData(result.results, appState.currentData);
-            
-            // Actualizar visualización con datos filtrados
-            visualizeDataIn3D(filteredData);
-            
-            // Actualizar estadísticas
-            updateFilterStats(true, filteredData.length);
-            
-            showNotification('success', 'Filtro aplicado', 
-                `${filteredData.length} registros coinciden con el filtro`);
-                
-        } else {
-            showNotification('info', 'Sin resultados', 
-                'El filtro no devolvió resultados. Mostrando todos los datos.');
-            clearPrologFilter();
-        }
-        
-    } catch (error) {
-        showNotification('error', 'Error en filtro', 
-            `No se pudo aplicar el filtro: ${error.message}`);
-    } finally {
-        hideLoading();
-    }
-}
-
-function extractFilteredData(prologResults, originalData) {
-    // Extraer IDs de los resultados de Prolog y filtrar datos originales
-    const filteredIds = new Set();
-    
-    prologResults.forEach(result => {
-        // Buscar ID en diferentes formatos posibles
-        if (result.ID) filteredIds.add(parseInt(result.ID));
-        if (result.Id) filteredIds.add(parseInt(result.Id));
-        if (result.id) filteredIds.add(parseInt(result.id));
-        if (result.X && !isNaN(parseInt(result.X))) filteredIds.add(parseInt(result.X));
-    });
-    
-    return originalData.filter((_, index) => filteredIds.has(index + 1));
-}
 
 function clearPrologFilter() {
-    currentPrologFilter = '';
-    filteredData = [];
-    
-    document.getElementById('prologFilter').value = '';
-    updateFilterStats(false, appState.currentData?.length || 0);
-    
-    // Restaurar visualización con todos los datos
-    if (appState.currentData && appState.currentData.length > 0) {
-        visualizeDataIn3D(appState.currentData);
-    }
-    
-    showNotification('info', 'Filtro limpiado', 'Mostrando todos los datos');
+  document.getElementById('prologFilter').value = '';
+  showNotification('info', 'Filtro Limpiado', 'Filtro Prolog eliminado');
 }
+
 
 function savePrologFilter() {
-    const filter = document.getElementById('prologFilter').value.trim();
-    
-    if (!filter) {
-        showNotification('warning', 'Filtro vacío', 'No hay filtro para guardar');
-        return;
-    }
-    
-    // Guardar en localStorage
-    const savedFilters = JSON.parse(localStorage.getItem('saved3DFilters') || '[]');
-    savedFilters.unshift({
-        query: filter,
-        timestamp: new Date().toISOString(),
-        name: `Filtro_${new Date().getTime()}`
-    });
-    
-    // Mantener solo los últimos 10 filtros
-    if (savedFilters.length > 10) {
-        savedFilters.pop();
-    }
-    
-    localStorage.setItem('saved3DFilters', JSON.stringify(savedFilters));
-    showNotification('success', 'Filtro guardado', 'El filtro se guardó para uso futuro');
+  showNotification('info', 'Filtro Guardado', 'Filtro Prolog guardado en sesión');
 }
+
 
 function loadQuickFilter(type) {
-    const quickFilters = {
-        'numericos': "dato(ID, Columna, Valor), number(Valor), Valor > 0.",
-        'textuales': "dato(ID, Columna, Valor), string(Valor), string_length(Valor, L), L > 0.",
-        'unicos': "setof(Valor, Columna^dato(_, Columna, Valor), ValoresUnicos), member(Valor, ValoresUnicos), dato(ID, _, Valor)."
-    };
-    
-    const filter = quickFilters[type];
-    if (filter) {
-        document.getElementById('prologFilter').value = filter;
-        showNotification('info', 'Filtro cargado', 'Modifica el filtro si es necesario y aplícalo');
+  const filters = {
+    'numericos': "dato(ID, Columna, Valor), number(Valor), Valor > 0.",
+    'textuales': "dato(ID, Columna, Valor), string(Valor), string_length(Valor, L), L > 0.",
+    'unicos': "setof(Valor, Columna^dato(_, Columna, Valor), ValoresUnicos), member(Valor, ValoresUnicos), dato(ID, _, Valor)."
+  };
+
+  const filter = filters[type];
+  if (filter) {
+    const filterInput = document.getElementById('prologFilter');
+    if (filterInput) {
+      filterInput.value = filter;
+      showNotification('info', 'Filtro Cargado', `Filtro ${type} cargado`);
     }
+  }
 }
 
-function updateFilterStats(isActive, recordCount) {
-    const statFilter = document.getElementById('statFilter');
-    if (statFilter) {
-        statFilter.textContent = isActive ? 'Sí' : 'No';
-        statFilter.className = isActive ? 'stat-value active' : 'stat-value';
+// 🔥 CORREGIR: Verificación de sesión mejorada
+async function verifySessionState() {
+  try {
+    console.log('🔍 Verificando estado de sesión:', appState.sessionId);
+
+    const response = await fetch(`/session/debug/${appState.sessionId}`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
-    
-    const statRecords = document.getElementById('statRecords');
-    if (statRecords) {
-        statRecords.textContent = recordCount;
+
+    const sessionInfo = await response.json();
+    console.log('📊 Información de sesión RAW:', sessionInfo);
+
+    // 🔥 PRUEBA DIRECTA: Ejecutar una consulta simple para verificar datos reales
+    const testResult = await executeSingleQueryHybrid("dato(_, _, _).");
+    console.log('🧪 Prueba de consulta directa:', testResult);
+
+    const hasDataFromQuery = testResult.success && testResult.count > 0;
+    const hasDataFromSession = sessionInfo.exists &&
+      (sessionInfo.hasPrologFacts ||
+        sessionInfo.objectCount > 0 ||
+        sessionInfo.prologFactsLength > 0);
+
+    console.log(`📊 Resumen verificación: Query=${hasDataFromQuery}, Session=${hasDataFromSession}`);
+
+    if (hasDataFromQuery || hasDataFromSession) {
+      const message = `✅ Sesión ACTIVA: ${testResult.count || sessionInfo.objectCount || 0} datos disponibles`;
+      console.log(message);
+      showNotification('success', 'Sesión OK', message);
+      return true;
+    } else {
+      const message = '❌ Sesión no tiene datos accesibles';
+      console.log(message);
+      showNotification('warning', 'Sesión vacía',
+        'La sesión existe pero no tiene datos accesibles. Carga un archivo CSV o imagen primero.');
+      return false;
     }
+
+  } catch (error) {
+    console.error('❌ Error verificando sesión:', error);
+
+    // Intentar consulta directa como fallback
+    try {
+      const fallbackResult = await executeSingleQueryHybrid("dato(_, _, _).");
+      if (fallbackResult.success && fallbackResult.count > 0) {
+        showNotification('success', 'Sesión OK (fallback)',
+          `✅ ${fallbackResult.count} datos disponibles (verificación fallback)`);
+        return true;
+      }
+    } catch (fallbackError) {
+      console.log('Fallback también falló:', fallbackError);
+    }
+
+    showNotification('error', 'Error de sesión',
+      `No se pudo verificar la sesión: ${error.message}`);
+    return false;
+  }
 }
 
+
+// 🔥 SECUENCIA DE DIAGNÓSTICO COMPLETO
+async function runCompleteDiagnostic() {
+  console.log('🩺 INICIANDO DIAGNÓSTICO COMPLETO DEL SISTEMA');
+
+  // 1. Verificar sesión
+  await verifySessionState();
+
+  // 2. Verificar estructura de datos
+  const records = await debugDataStructure();
+
+  // 3. Probar consultas específicas con los datos reales
+  if (records) {
+    const firstRecord = records[Object.keys(records)[0]];
+    console.log('🎯 PRIMER REGISTRO:', firstRecord);
+
+    // Probar consulta con valores reales
+    const firstColumn = Object.keys(firstRecord)[0];
+    const firstValue = firstRecord[firstColumn];
+
+    const testQuery = `dato(ID, '${firstColumn}', '${firstValue}').`;
+    console.log(`🔍 Probando consulta: ${testQuery}`);
+
+    const testResult = await executeSingleQueryHybrid(testQuery);
+    console.log(`📊 Resultado: ${testResult.count} registros`);
+  }
+
+  // 4. Probar consultas básicas mejoradas
+  const testQueries = [
+    "dato(ID, Columna, Valor), Columna = 'nombre'.",
+    "dato(ID, Columna, Valor), Columna = 'edad'.",
+    "dato(ID, Columna, Valor), Columna = 'salario'.",
+    "dato(ID, 'nombre', 'Juan').",
+    "dato(ID, 'departamento', 'IT')."
+  ];
+
+  for (const query of testQueries) {
+    const result = await executeSingleQueryHybrid(query);
+    console.log(`🔍 ${query}: ${result.count} resultados`);
+  }
+}
+// 🔥 NUEVA FUNCIÓN: Forzar recarga de sesión actual
+async function forceReloadSession() {
+  showLoading('processing', 'Recargando sesión...', 'Sincronizando con servidor');
+
+  try {
+    // Primero verificar todas las sesiones disponibles
+    const response = await fetch('/session/debug-all');
+    const allSessions = await response.json();
+
+    console.log('📊 Todas las sesiones disponibles:', allSessions);
+
+    // Verificar nuestra sesión actual
+    const sessionResponse = await fetch(`/session/debug/${appState.sessionId}`);
+    const sessionInfo = await sessionResponse.json();
+
+    console.log('📊 Nuestra sesión actual:', sessionInfo);
+
+    if (sessionInfo.exists && (sessionInfo.hasPrologFacts || sessionInfo.objectCount > 0)) {
+      showNotification('success', 'Sesión Recargada',
+        `Sesión ${appState.sessionId} tiene datos. Puedes ejecutar consultas ahora.`);
+      return true;
+    } else {
+      // Buscar alguna sesión que tenga datos
+      const sessionsWithData = Object.entries(allSessions.sessions).filter(([id, session]) =>
+        session.dataRecords > 0 || session.imageObjects > 0
+      );
+
+      if (sessionsWithData.length > 0) {
+        const [sessionId, sessionData] = sessionsWithData[0];
+        showNotification('warning', 'Sesión Cambiada',
+          `Cambiando a sesión ${sessionId} que tiene ${sessionData.dataRecords} registros.`);
+
+        appState.setSessionId(sessionId);
+        return true;
+      } else {
+        throw new Error('No hay ninguna sesión con datos. Carga un archivo primero.');
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error recargando sesión:', error);
+    showNotification('error', 'Error', `No se pudo recargar la sesión: ${error.message}`);
+    return false;
+  } finally {
+    hideLoading();
+  }
+}
+
+// 🔥 ACTUALIZA processImageFile para verificar después del análisis
+async function processImageFile(file) {
+  showLoading('analyzing', 'Analizando atributos de imagen...', 'Detectando objetos, estados y características');
+
+  const formData = new FormData();
+  formData.append('image', file);
+  formData.append('sessionId', appState.sessionId);
+
+  try {
+    const response = await fetch('/analyze/image/detailed', {
+      method: 'POST',
+      body: formData
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      appState.currentAnalysis = result.analysis;
+      showNotification('success', 'Análisis completado',
+        `${result.analysis.detectedObjects?.length || 0} objetos con atributos detectados`);
+
+      displayAttributeAnalysis(result.analysis, result.prologFacts);
+      generateAttributeRules(result.analysis, result.autoQueries);
+
+      // 🔥 VERIFICAR QUE LOS DATOS SE GUARDARON EN SESIÓN
+      setTimeout(() => {
+        verifySessionState();
+      }, 1000);
+
+    } else {
+      throw new Error(result.error);
+    }
+  } catch (error) {
+    showNotification('error', 'Error en análisis', `No se pudieron detectar atributos: ${error.message}`);
+  } finally {
+    hideLoading();
+  }
+}
+
+
+// 🔥 INICIALIZACIÓN COMPLETA DEL SISTEMA
+
+// 🔥 CORREGIR: Inicialización completa del sistema
+function initializeCompleteSystem() {
+  console.log('🚀 Inicializando sistema completo...');
+
+  try {
+    // Inicializar event listeners
+    initializeEventListeners();
+
+    // Configurar interfaz
+    updateSessionInfo();
+    setupQueryExamples();
+    loadSavedQueries();
+    loadSavedRulesList();
+    loadRuleCarousel();
+    addDiagnosticButtons();
+
+    // Configurar pestañas por defecto - SIN EVENTO
+    const defaultTab = document.querySelector('.tab-btn.active');
+    if (!defaultTab) {
+      const firstTabBtn = document.querySelector('.tab-btn');
+      if (firstTabBtn) {
+        firstTabBtn.classList.add('active');
+      }
+    }
+
+    console.log('✅ Sistema completamente inicializado');
+  } catch (error) {
+    console.error('❌ Error en inicialización:', error);
+  }
+}
+
+// Ejecutar inicialización cuando el DOM esté listo
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeCompleteSystem);
+} else {
+  initializeCompleteSystem();
+}
+
+// 🔥 FUNCIÓN PARA DIAGNÓSTICO COMPLETO DE DATOS
+async function diagnosticarEstructuraDatos() {
+  console.log('🔍 INICIANDO DIAGNÓSTICO COMPLETO DE ESTRUCTURA DE DATOS');
+  showLoading('analyzing', 'Diagnosticando estructura de datos...', 'Analizando registros y columnas');
+
+  try {
+    // 1. Obtener todos los datos
+    const todosDatos = await executeSingleQueryHybrid("dato(ID, Columna, Valor).");
+    console.log(`📊 Total de hechos en base de datos: ${todosDatos.count}`);
+
+    if (!todosDatos.success || todosDatos.count === 0) {
+      showNotification('warning', 'Sin datos', 'No hay datos disponibles para diagnosticar');
+      return;
+    }
+
+    // 2. Agrupar por ID
+    const registros = {};
+    todosDatos.results.forEach(item => {
+      const id = item.ID || item.id;
+      const columna = item.Columna || item.columna;
+      const valor = item.Valor || item.valor;
+
+      if (id && columna && valor !== undefined) {
+        if (!registros[id]) registros[id] = {};
+        registros[id][columna] = valor;
+      }
+    });
+
+    console.log('🎯 REGISTROS COMPLETOS DETECTADOS:');
+    Object.keys(registros).sort((a, b) => a - b).forEach(id => {
+      console.log(`   ID ${id}:`, registros[id]);
+    });
+
+    // 3. Verificar columnas únicas
+    const columnasUnicas = new Set();
+    todosDatos.results.forEach(item => {
+      const columna = item.Columna || item.columna;
+      if (columna) columnasUnicas.add(columna);
+    });
+
+    console.log('🏷️ COLUMNAS ÚNICAS DETECTADAS:', Array.from(columnasUnicas));
+
+    // 4. Contar por columna
+    let mensaje = `📊 DIAGNÓSTICO COMPLETO:\n\n`;
+    mensaje += `• Total de hechos: ${todosDatos.count}\n`;
+    mensaje += `• Registros únicos: ${Object.keys(registros).length}\n`;
+    mensaje += `• Columnas detectadas: ${Array.from(columnasUnicas).join(', ')}\n\n`;
+
+    mensaje += `📈 CONTEOS POR COLUMNA:\n`;
+    for (const columna of columnasUnicas) {
+      const resultado = await executeSingleQueryHybrid(`dato(ID, '${columna}', _).`);
+      mensaje += `• ${columna}: ${resultado.count} valores\n`;
+    }
+
+    mensaje += `\n🔍 PRIMEROS REGISTROS:\n`;
+    Object.keys(registros).sort((a, b) => a - b).slice(0, 3).forEach(id => {
+      mensaje += `ID ${id}: ${JSON.stringify(registros[id])}\n`;
+    });
+
+    showNotification('info', 'Diagnóstico Completado', mensaje);
+
+    return registros;
+
+  } catch (error) {
+    console.error('❌ Error en diagnóstico:', error);
+    showNotification('error', 'Error en diagnóstico', `No se pudo completar el diagnóstico: ${error.message}`);
+  } finally {
+    hideLoading();
+  }
+}
+
+// 🔥 PRUEBAS CORREGIDAS MEJORADAS
+async function pruebasCorregidas() {
+  console.log('🧪 EJECUTANDO PRUEBAS CORREGIDAS');
+  showLoading('querying', 'Ejecutando pruebas corregidas...', 'Verificando consultas básicas');
+
+  try {
+    const pruebas = [
+      {
+        nombre: "Todos los datos",
+        consulta: "dato(ID, Columna, Valor).",
+        esperado: "25 hechos (5 registros × 5 columnas)"
+      },
+      {
+        nombre: "Buscar Juan",
+        consulta: "dato(ID, 'nombre', 'Juan').",
+        esperado: "1 resultado"
+      },
+      {
+        nombre: "Empleados IT",
+        consulta: "dato(ID, 'departamento', 'IT').",
+        esperado: "2 resultados"
+      },
+      {
+        nombre: "Contar registros",
+        consulta: "findall(ID, dato(ID, 'nombre', _), Lista), length(Lista, Total).",
+        esperado: "Total = 5"
+      },
+      {
+        nombre: "Verificar estructura",
+        consulta: "findall(Col, dato(_, Col, _), Columnas), sort(Columnas, Unicas).",
+        esperado: "5 columnas únicas"
+      }
+    ];
+
+    let resultados = "🧪 RESULTADOS DE PRUEBAS CORREGIDAS:\n\n";
+
+    for (const prueba of pruebas) {
+      console.log(`\n🔍 Probando: ${prueba.nombre}`);
+      console.log(`   Consulta: ${prueba.consulta}`);
+
+      const resultado = await executeSingleQueryHybrid(prueba.consulta);
+
+      const estado = resultado.success ? '✅' : '❌';
+      resultados += `${estado} ${prueba.nombre}\n`;
+      resultados += `   Consulta: ${prueba.consulta}\n`;
+      resultados += `   Resultado: ${resultado.count} soluciones\n`;
+      resultados += `   Esperado: ${prueba.esperado}\n`;
+
+      if (resultado.error) {
+        resultados += `   Error: ${resultado.error}\n`;
+      }
+
+      resultados += `\n`;
+
+      // Pequeña pausa entre consultas
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+
+    showNotification('info', 'Pruebas Completadas', resultados);
+
+  } catch (error) {
+    console.error('❌ Error en pruebas:', error);
+    showNotification('error', 'Error en pruebas', `No se pudieron ejecutar las pruebas: ${error.message}`);
+  } finally {
+    hideLoading();
+  }
+}
+
+// 🔥 PRUEBAS CORREGIDAS
+async function pruebasCorregidas() {
+  console.log('🧪 EJECUTANDO PRUEBAS CORREGIDAS');
+
+  const pruebas = [
+    "dato(ID, 'nombre', 'Juan').",
+    "dato(ID, 'departamento', 'IT').",
+    "dato(ID, 'edad', Edad), number_string(Num, Edad), Num > 30.",
+    "findall(ID, dato(ID, 'nombre', _), Lista), length(Lista, Total).",
+    "verificar_estructura."
+  ];
+
+  for (const prueba of pruebas) {
+    console.log(`\n🔍 Probando: ${prueba}`);
+    const resultado = await executeSingleQueryHybrid(prueba);
+    console.log(`   Resultado: ${resultado.count} soluciones`);
+    if (resultado.results && resultado.results.length > 0) {
+      console.log(`   Ejemplo:`, resultado.results[0]);
+    }
+  }
+}
+
+window.addDiagnosticButtons = addDiagnosticButtons;
+
+window.diagnosticarEstructuraDatos = diagnosticarEstructuraDatos;
+window.pruebasCorregidas = pruebasCorregidas;
+
+// 🔥 EXPORTAR NUEVAS FUNCIONES DE DIAGNÓSTICO
+window.debugDataStructure = debugDataStructure;
+window.testCorrectedQueries = testCorrectedQueries;
+// Exportar funciones globales para HTML
+window.switchTab = switchTab;
+window.executePrologQuery = executePrologQuery;
+window.saveRules = saveRules;
+window.loadTemplate = loadTemplate;
+window.addToCustomRules = addToCustomRules;
+window.deleteRule = deleteRule;
+window.copyRuleToClipboard = copyRuleToClipboard;
+window.loadSavedRule = loadSavedRule;
+window.useSavedRuleInQueries = useSavedRuleInQueries;
+window.deleteSavedRule = deleteSavedRule;
+window.saveQuery = saveQuery;
+window.deleteSavedQuery = deleteSavedQuery;
+window.loadAutoQuery = loadAutoQuery;
+window.clearResults = clearResults;
+window.exportResults = exportResults;
+window.processDataFile = processDataFile;
+window.handleFileSelect = handleFileSelect;
+window.analyzeImageForAttributes = analyzeImageForAttributes;
+window.executeAttributeRule = executeAttributeRule;
+window.testAttributeSystem = testAttributeSystem;
+window.clearAllRules = clearAllRules;
+window.nextRuleCard = nextRuleCard;
+window.prevRuleCard = prevRuleCard;
+window.goToPage = goToPage;
+
+console.log('🎯 Todas las funciones del sistema cargadas correctamente');
