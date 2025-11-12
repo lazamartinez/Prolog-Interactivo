@@ -1,7 +1,7 @@
 # Archivos de entorno y secretos
 .env
 *.env
-*google-cloud-vision-key
+google-cloud-key.json
 
 # Entornos virtuales
 tfenv/
