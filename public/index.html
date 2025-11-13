@@ -17,7 +17,7 @@
             padding: 1rem 2rem;
             position: sticky;
             top: 0;
-            z-index: 1000;
+            z-index: 998;
             box-shadow: var(--shadow-large);
         }
 
@@ -438,6 +438,27 @@
             --blur-xl: blur(16px);
         }
 
+        #notificationContainer {
+            z-index: 9999 !important;
+        }
+
+        .notification {
+            z-index: 10000 !important;
+        }
+
+        /* Prevenir desbordamiento en tablas grandes */
+        .data-table {
+            max-width: 100%;
+            table-layout: fixed;
+        }
+
+        .data-table td {
+            word-wrap: break-word;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         /* Estilos para las secciones faltantes */
         .stats-card,
         .quick-stats,
@@ -752,11 +773,10 @@
                     </div>
                 </div>
 
-                <div class="nav-item">
-                    <a href="#" class="nav-link" onclick="showHelp()">
-                        <i class="fas fa-question-circle"></i>
-                        <span>Ayuda</span>
-                    </a>
+                <div class="nav-help-button">
+                    <button class="btn btn-help" onclick="showHelpModal()" title="Ayuda y Guía Rápida">
+                        <i class="fas fa-question-circle"></i> Ayuda
+                    </button>
                 </div>
             </div>
 
@@ -1034,6 +1054,9 @@
                     <button class="btn btn-primary btn-execute" onclick="safeExecutePrologQuery()">
                         <i class="fas fa-play"></i> Ejecutar Consulta
                     </button>
+                    <button class="btn btn-success btn-execute" onclick="generateReport()" style="margin-left: 10px;">
+                        <i class="fas fa-file-pdf"></i> Generar Informe PDF
+                    </button>
                     <small class="form-text">Presiona Ctrl+Enter para ejecutar rápidamente</small>
                 </div>
             </div>
@@ -1114,6 +1137,243 @@
             </div>
         </div>
     </footer>
+
+    <!-- Modal de Ayuda -->
+    <div id="helpModal" class="modal">
+        <div class="modal-content help-modal">
+            <div class="modal-header">
+                <h2>
+                    <i class="fas fa-robot"></i>
+                    Guía Completa del Sistema
+                </h2>
+                <button class="modal-close" onclick="closeHelpModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Pestañas de navegación -->
+                <div class="help-tabs">
+                    <button class="tab-btn active" onclick="openHelpTab('quickstart')">
+                        <i class="fas fa-rocket"></i> Inicio Rápido
+                    </button>
+                    <button class="tab-btn" onclick="openHelpTab('prolog')">
+                        <i class="fas fa-code"></i> Consultas Prolog
+                    </button>
+                    <button class="tab-btn" onclick="openHelpTab('crispdm')">
+                        <i class="fas fa-project-diagram"></i> CRISP-DM
+                    </button>
+                    <button class="tab-btn" onclick="openHelpTab('examples')">
+                        <i class="fas fa-star"></i> Ejemplos
+                    </button>
+                </div>
+
+                <!-- Contenido de las pestañas -->
+                <div class="help-content">
+
+                    <!-- Pestaña 1: Inicio Rápido -->
+                    <div id="quickstart-tab" class="tab-content active">
+                        <div class="help-step">
+                            <div class="step-number">1</div>
+                            <div class="step-content">
+                                <h3>Cargar Datos de Hongos</h3>
+                                <p>Ve a la pestaña <strong>"Datos"</strong> y carga un archivo CSV con este formato:</p>
+                                <div class="code-example">
+                                    forma,olor,habitat,clase<br>
+                                    abultada,almendra,bosque,ingerible<br>
+                                    conica,ninguno,praderas,venenoso
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="help-step">
+                            <div class="step-number">2</div>
+                            <div class="step-content">
+                                <h3>Ejecutar Primera Consulta</h3>
+                                <p>En <strong>"Consultas Prolog"</strong>, escribe y ejecuta:</p>
+                                <div class="code-example">
+                                    clasificar_hongo('abultada', 'almendra', 'bosque', Clase).
+                                </div>
+                                <p>¡Verás el resultado en segundos! 🎉</p>
+                            </div>
+                        </div>
+
+                        <div class="help-step">
+                            <div class="step-number">3</div>
+                            <div class="step-content">
+                                <h3>Generar Informe PDF</h3>
+                                <p>Después de probar algunas consultas, haz clic en:</p>
+                                <div class="action-button">
+                                    <i class="fas fa-file-pdf"></i> Generar Informe PDF
+                                </div>
+                                <p>¡Obtendrás un informe completo para el TP!</p>
+                            </div>
+                        </div>
+
+                        <div class="quick-tip">
+                            <i class="fas fa-lightbulb"></i>
+                            <strong>Tip Rápido:</strong> Usa <kbd>Ctrl + Enter</kbd> para ejecutar consultas rápidamente
+                        </div>
+                    </div>
+
+                    <!-- Pestaña 2: Consultas Prolog -->
+                    <div id="prolog-tab" class="tab-content">
+                        <h3>Consultas Prolog para Probarlo Todo</h3>
+
+                        <div class="query-category">
+                            <h4>Básicas (Empieza aquí)</h4>
+                            <div class="query-list">
+                                <div class="query-item"
+                                    onclick="copyToQuery('clasificar_hongo(\'abultada\', \'almendra\', \'bosque\', Clase).')">
+                                    <code>clasificar_hongo('abultada', 'almendra', 'bosque', Clase).</code>
+                                    <span class="query-desc">Clasificar hongo específico</span>
+                                </div>
+                                <div class="query-item"
+                                    onclick="copyToQuery('es_ingerible(\'abultada\', \'almendra\', _).')">
+                                    <code>es_ingerible('abultada', 'almendra', _).</code>
+                                    <span class="query-desc">Verificar si es ingerible</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="query-category">
+                            <h4>Estadísticas</h4>
+                            <div class="query-list">
+                                <div class="query-item" onclick="copyToQuery('estadisticas_hongos.')">
+                                    <code>estadisticas_hongos.</code>
+                                    <span class="query-desc">Ver métricas del sistema</span>
+                                </div>
+                                <div class="query-item" onclick="copyToQuery('listar_hongos_seguros.')">
+                                    <code>listar_hongos_seguros.</code>
+                                    <span class="query-desc">Listar todos los seguros</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="query-category">
+                            <h4>Avanzadas</h4>
+                            <div class="query-list">
+                                <div class="query-item"
+                                    onclick="copyToQuery('clasificar_hongo(Forma, Olor, Habitat, Clase).')">
+                                    <code>clasificar_hongo(Forma, Olor, Habitat, Clase).</code>
+                                    <span class="query-desc">Todas las combinaciones</span>
+                                </div>
+                                <div class="query-item"
+                                    onclick="copyToQuery('findall(_, es_ingerible(_, _, _), Seguros), length(Seguros, Total).')">
+                                    <code>findall(_, es_ingerible(_, _, _), Seguros), length(Seguros, Total).</code>
+                                    <span class="query-desc">Contar hongos seguros</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pestaña 3: CRISP-DM -->
+                    <div id="crispdm-tab" class="tab-content">
+                        <h3>Metodología CRISP-DM Implementada</h3>
+
+                        <div class="phase-card">
+                            <div class="phase-icon">1</div>
+                            <div class="phase-content">
+                                <h4>Comprensión del Problema</h4>
+                                <p><strong>Objetivo:</strong> Clasificar hongos con >80% de precisión</p>
+                                <p><strong>Logrado:</strong> Sistema con 81.54% de precisión ✅</p>
+                            </div>
+                        </div>
+
+                        <div class="phase-card">
+                            <div class="phase-icon">2</div>
+                            <div class="phase-content">
+                                <h4>Comprensión de los Datos</h4>
+                                <p><strong>Atributos:</strong> Forma, Olor, Hábitat</p>
+                                <p><strong>Datos:</strong> 32 hechos procesados ✅</p>
+                            </div>
+                        </div>
+
+                        <div class="phase-card">
+                            <div class="phase-icon">3</div>
+                            <div class="phase-content">
+                                <h4>Preparación de Datos</h4>
+                                <p><strong>Procesamiento:</strong> CSV → Hechos Prolog</p>
+                                <p><strong>Estructura:</strong> dato(ID, Atributo, Valor) ✅</p>
+                            </div>
+                        </div>
+
+                        <div class="phase-card">
+                            <div class="phase-icon">4</div>
+                            <div class="phase-content">
+                                <h4>Modelado</h4>
+                                <p><strong>Algoritmo:</strong> Árboles de Decisión</p>
+                                <p><strong>Reglas:</strong> 65 reglas extraídas ✅</p>
+                            </div>
+                        </div>
+
+                        <div class="phase-card">
+                            <div class="phase-icon">5</div>
+                            <div class="phase-content">
+                                <h4>Evaluación</h4>
+                                <p><strong>Precisión:</strong> 81.54%</p>
+                                <p><strong>Meta:</strong> >80% ✅ SUPERADO</p>
+                            </div>
+                        </div>
+
+                        <div class="phase-card">
+                            <div class="phase-icon">6</div>
+                            <div class="phase-content">
+                                <h4>Implementación</h4>
+                                <p><strong>Sistema:</strong> Web con interfaz moderna</p>
+                                <p><strong>Tecnologías:</strong> Prolog + Node.js + PostgreSQL ✅</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pestaña 4: Ejemplos -->
+                    <div id="examples-tab" class="tab-content">
+                        <h3>Flujos de Ejemplo para el TP</h3>
+
+                        <div class="example-flow">
+                            <h4>Flujo Básico (5 minutos)</h4>
+                            <ol>
+                                <li>Ejecuta: <code>clasificar_hongo('abultada', 'almendra', 'bosque', Clase).</code>
+                                </li>
+                                <li>Ejecuta: <code>es_ingerible('abultada', 'almendra', _).</code></li>
+                                <li>Ejecuta: <code>estadisticas_hongos.</code></li>
+                                <li>Haz clic en <strong>"Generar Informe PDF"</strong></li>
+                            </ol>
+                        </div>
+
+                        <div class="example-flow">
+                            <h4>Flujo Completo (10 minutos)</h4>
+                            <ol>
+                                <li><code>clasificar_hongo('conica', 'ninguno', 'praderas', Clase).</code></li>
+                                <li><code>listar_hongos_seguros.</code></li>
+                                <li><code>clasificar_hongo(Forma, 'almendra', 'bosque', 'ingerible').</code></li>
+                                <li><code>findall(_, es_ingerible(_, _, _), S), length(S, Total).</code></li>
+                                <li><strong>Generar PDF</strong> y ¡listo! 🎓</li>
+                            </ol>
+                        </div>
+
+                        <div class="success-tip">
+                            <i class="fas fa-trophy"></i>
+                            <div>
+                                <strong>¡Consejo para el TP!</strong>
+                                <p>Ejecuta al menos 5 consultas diferentes antes de generar el PDF para que el informe
+                                    quede más completo.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="startQuickDemo()">
+                    <i class="fas fa-play"></i> Iniciar Demo Guiada
+                </button>
+                <button class="btn btn-outline" onclick="closeHelpModal()">
+                    Cerrar Ayuda
+                </button>
+            </div>
+        </div>
+    </div>
 
     <script src="app.js"></script>
     <script>

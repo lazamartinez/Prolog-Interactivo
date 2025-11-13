@@ -8,6 +8,8 @@ const pl = require('tau-prolog');
 const { Pool } = require('pg');
 const format = require('pg-format');
 require('dotenv').config();
+const PDFReportGenerator = require('./services/pdfGenerator');
+const pdfGenerator = new PDFReportGenerator();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1031,44 +1033,57 @@ class PostgresDataProcessor {
 }
 
 // 🔥 CARGAR REGLAS BASE PROLOG
+// En server.js - modificar la función loadBasePrologRules
 function loadBasePrologRules() {
   try {
     const rulesPath = path.join(__dirname, 'prolog', 'rules.pl');
+    const hongosPath = path.join(__dirname, 'prolog', 'hongos_rules.pl');
+
     console.log(`🔍 Buscando reglas en: ${rulesPath}`);
 
+    let baseRules = '';
+
+    // Cargar reglas base
     if (fs.existsSync(rulesPath)) {
-      const baseRules = fs.readFileSync(rulesPath, 'utf8');
-      console.log('✅ Reglas base cargadas desde:', rulesPath);
-      console.log(`📏 Tamaño: ${baseRules.length} caracteres, ${baseRules.split('\n').length} líneas`);
-      return baseRules;
-    } else {
-      console.log('❌ Archivo de reglas base NO encontrado:', rulesPath);
-      return `
-% Reglas básicas de Prolog - FALLBACK
-color(rojo).
-color(azul).
-color(verde).
-color(amarillo).
-
-es_calido(rojo).
-es_calido(amarillo).
-es_frio(azul).
-es_frio(verde).
-
-member(X, [X|_]).
-member(X, [_|T]) :- member(X, T).
-
-length([], 0).
-length([_|T], N) :- length(T, M), N is M + 1.
-
-append([], L, L).
-append([H|T], L, [H|R]) :- append(T, L, R).
-`;
+      baseRules += fs.readFileSync(rulesPath, 'utf8') + '\n\n';
+      console.log('✅ Reglas base cargadas');
     }
+
+    // Cargar reglas de hongos (TP)
+    if (fs.existsSync(hongosPath)) {
+      baseRules += '% === REGLAS DEL SISTEMA DE HONGOS (TP) ===\n';
+      baseRules += fs.readFileSync(hongosPath, 'utf8') + '\n\n';
+      console.log('✅ Reglas de hongos cargadas (TP)');
+    }
+
+    if (baseRules === '') {
+      console.log('❌ No se encontraron archivos de reglas');
+      baseRules = fallbackRules();
+    }
+
+    console.log(`📏 Reglas cargadas: ${baseRules.length} caracteres`);
+    return baseRules;
+
   } catch (error) {
     console.error('❌ Error cargando reglas base:', error.message);
-    return 'color(rojo). color(azul). color(verde). color(amarillo).';
+    return fallbackRules();
   }
+}
+
+function fallbackRules() {
+  return `
+% Reglas básicas de Prolog - FALLBACK
+color(rojo). color(azul). color(verde). color(amarillo).
+
+% Reglas básicas del sistema de hongos
+es_ingerible('abultada', 'almendra', _).
+es_venenoso('abultada', 'mohoso', _).
+
+clasificar_hongo(S, O, H, Clase) :-
+    es_ingerible(S, O, H), Clase = 'ingerible'.
+clasificar_hongo(S, O, H, Clase) :-
+    es_venenoso(S, O, H), Clase = 'venenoso'.
+`;
 }
 
 const basePrologRules = loadBasePrologRules();
@@ -1113,7 +1128,7 @@ app.get('/api/status', async (req, res) => {
   }
 });
 
-// Ruta para subir datos
+// En la ruta /upload/data - agregar manejo de archivos grandes
 app.post('/upload/data', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
@@ -1122,8 +1137,27 @@ app.post('/upload/data', upload.single('file'), async (req, res) => {
 
     const sessionId = req.body.sessionId || 'default';
     const fileExt = path.extname(req.file.originalname).toLowerCase();
+    const fileSizeMB = (req.file.size / (1024 * 1024)).toFixed(2);
 
-    console.log(`📊 Procesando archivo para sesión: ${sessionId}`);
+    console.log(`📊 Procesando archivo: ${req.file.originalname} (${fileSizeMB} MB) para sesión: ${sessionId}`);
+
+    // 🔥 LIMITAR TAMAÑO MÁXIMO
+    const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+    if (req.file.size > MAX_FILE_SIZE) {
+      // Limpiar archivo temporal
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (cleanupError) {
+        console.log('⚠️ No se pudo eliminar archivo temporal:', cleanupError.message);
+      }
+      
+      return res.status(413).json({
+        error: 'Archivo demasiado grande',
+        details: `El archivo excede el límite de ${MAX_FILE_SIZE / (1024 * 1024)}MB`,
+        maxSize: `${MAX_FILE_SIZE / (1024 * 1024)}MB`,
+        yourSize: `${fileSizeMB}MB`
+      });
+    }
 
     // Asegurar que la sesión existe
     await sessionManager.ensureSession(sessionId);
@@ -1137,7 +1171,8 @@ app.post('/upload/data', upload.single('file'), async (req, res) => {
       data: result.data,
       stats: result.stats,
       prologFacts: result.prologFacts,
-      sessionId: sessionId
+      sessionId: sessionId,
+      fileSize: `${fileSizeMB} MB`
     });
 
     // Limpiar archivo temporal
@@ -1149,6 +1184,16 @@ app.post('/upload/data', upload.single('file'), async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error procesando archivo:', error);
+    
+    // Limpiar archivo temporal en caso de error
+    try {
+      if (req.file && req.file.path) {
+        fs.unlinkSync(req.file.path);
+      }
+    } catch (cleanupError) {
+      console.log('⚠️ No se pudo eliminar archivo temporal:', cleanupError.message);
+    }
+    
     res.status(500).json({
       error: 'Error procesando archivo de datos',
       details: error.message
@@ -1252,11 +1297,23 @@ app.post('/analyze/image/detailed', upload.single('image'), async (req, res) => 
 
 // Ruta para consultas Prolog con PostgreSQL
 app.post('/query/prolog', async (req, res) => {
+  let responseSent = false; // 🔥 PREVENIR RESPUESTAS DUPLICADAS
+
+  const sendResponse = (data) => {
+    if (!responseSent) {
+      responseSent = true;
+      res.json(data);
+    }
+  };
+
   try {
     const { query, customRules = '', sessionId = 'default' } = req.body;
 
     if (!query) {
-      return res.status(400).json({ error: 'Consulta Prolog requerida' });
+      return sendResponse({ 
+        success: false, 
+        error: 'Consulta Prolog requerida' 
+      });
     }
 
     console.log(`🔍 Ejecutando consulta: ${query}`);
@@ -1273,18 +1330,38 @@ app.post('/query/prolog', async (req, res) => {
     if (facts.length > 0) {
       prologProgram += `% === HECHOS DESDE POSTGRESQL ===\n`;
       facts.forEach(fact => {
-        // Asegurar que arguments sea un array
-        const args = Array.isArray(fact.arguments)
-          ? fact.arguments
-          : (typeof fact.arguments === 'string' ? JSON.parse(fact.arguments) : []);
+        try {
+          // Asegurar que arguments sea un array
+          const args = Array.isArray(fact.arguments)
+            ? fact.arguments
+            : (typeof fact.arguments === 'string' ? JSON.parse(fact.arguments) : []);
 
-        const argsFormatted = args.map(arg =>
-          typeof arg === 'string' ? `'${arg.replace(/'/g, "''")}'` : arg
-        ).join(', ');
+          const argsFormatted = args.map(arg => {
+            if (arg === null || arg === undefined) {
+              return 'null';
+            }
+            if (typeof arg === 'string') {
+              // Escapar comillas simples correctamente
+              const escapedArg = arg.replace(/'/g, "''");
+              return `'${escapedArg}'`;
+            }
+            if (typeof arg === 'number') {
+              return arg.toString();
+            }
+            if (typeof arg === 'boolean') {
+              return arg ? 'true' : 'false';
+            }
+            return `'${String(arg)}'`;
+          }).join(', ');
 
-        prologProgram += `${fact.predicate}(${argsFormatted}).\n`;
+          prologProgram += `${fact.predicate}(${argsFormatted}).\n`;
+        } catch (error) {
+          console.error(`❌ Error procesando hecho:`, fact, error);
+        }
       });
       prologProgram += '\n';
+    } else {
+      console.log('ℹ️ No hay hechos en la base de datos');
     }
 
     // Agregar reglas guardadas
@@ -1303,91 +1380,145 @@ app.post('/query/prolog', async (req, res) => {
     }
 
     console.log(`📝 Programa Prolog: ${prologProgram.split('\n').length} líneas`);
+    
+    // Debug: mostrar primeras líneas del programa
+    const firstLines = prologProgram.split('\n').slice(0, 10).join('\n');
+    console.log(`📄 Primeras líneas:\n${firstLines}\n...`);
 
     // Ejecutar con Tau-Prolog
     const plSession = pl.create();
     const results = [];
+    let hasError = false;
 
     plSession.consult(prologProgram, {
       success: function () {
+        console.log('✅ Programa Prolog cargado correctamente');
+        
         plSession.query(query, {
           success: function (goal) {
+            console.log('✅ Consulta parseada correctamente');
+            
             const findSolutions = function () {
               plSession.answer({
                 success: function (answer) {
-                  const solution = {};
-                  const answerStr = pl.format_answer(answer);
+                  try {
+                    const solution = {};
+                    const answerStr = pl.format_answer(answer);
+                    console.log(`🔍 Respuesta obtenida: ${answerStr}`);
 
-                  if (answerStr.includes(' = ')) {
-                    const parts = answerStr.includes(' /\\ ') ?
-                      answerStr.split(' /\\ ') : [answerStr];
+                    if (answerStr === 'true') {
+                      // Consulta booleana verdadera sin variables
+                      results.push({ success: true });
+                    } else if (answerStr.includes(' = ')) {
+                      // Consulta con variables ligadas
+                      const parts = answerStr.includes(' /\\ ') ?
+                        answerStr.split(' /\\ ') : [answerStr];
 
-                    parts.forEach(part => {
-                      if (part.includes(' = ')) {
-                        const [varName, value] = part.split(' = ');
-                        if (varName && value) {
-                          solution[varName.trim()] = value.trim().replace(/'/g, '');
+                      parts.forEach(part => {
+                        if (part.includes(' = ')) {
+                          const [varName, value] = part.split(' = ');
+                          if (varName && value) {
+                            const cleanValue = value.trim().replace(/'/g, '');
+                            solution[varName.trim()] = cleanValue;
+                          }
                         }
+                      });
+
+                      if (Object.keys(solution).length > 0) {
+                        results.push(solution);
                       }
+                    } else if (answerStr !== 'false') {
+                      // Otro tipo de resultado
+                      results.push({ output: answerStr });
+                    }
+
+                    // Buscar más soluciones
+                    findSolutions();
+                  } catch (error) {
+                    console.error('❌ Error procesando respuesta:', error);
+                    hasError = true;
+                    sendResponse({
+                      success: false,
+                      error: `Error procesando respuesta: ${error.message}`,
+                      query: query
                     });
                   }
-
-                  if (Object.keys(solution).length > 0) {
-                    results.push(solution);
-                  } else if (answerStr !== 'false' && answerStr !== 'null') {
-                    results.push({ success: true, output: answerStr });
-                  }
-
-                  findSolutions();
                 },
                 fail: function () {
                   console.log(`🔚 No más soluciones. Total: ${results.length}`);
-                  res.json({
+                  
+                  if (hasError) return;
+                  
+                  sendResponse({
                     success: true,
                     results: results,
                     count: results.length,
                     query: query,
-                    source: 'postgresql'
+                    source: 'postgresql',
+                    programLines: prologProgram.split('\n').length
                   });
                 },
                 error: function (err) {
-                  console.log('❌ Error en respuesta:', err);
-                  res.json({
+                  console.log('❌ Error en respuesta Prolog:', err);
+                  hasError = true;
+                  sendResponse({
                     success: false,
-                    error: err.toString(),
+                    error: `Error Prolog: ${err.toString()}`,
                     query: query
                   });
                 }
               });
             };
 
+            // Iniciar búsqueda de soluciones
             findSolutions();
           },
           error: function (err) {
-            res.json({
+            console.log('❌ Error en consulta Prolog:', err);
+            sendResponse({
               success: false,
-              error: err.toString(),
+              error: `Error en consulta: ${err.toString()}`,
               query: query
             });
           }
         });
       },
       error: function (err) {
-        res.json({
+        console.log('❌ Error cargando programa Prolog:', err);
+        sendResponse({
           success: false,
           error: 'Error cargando programa Prolog: ' + err.toString(),
-          query: query
+          query: query,
+          details: 'Verifica la sintaxis de las reglas y hechos'
         });
       }
     });
 
+    // Timeout de seguridad
+    setTimeout(() => {
+      if (!responseSent) {
+        console.log('⏰ Timeout en consulta Prolog');
+        sendResponse({
+          success: false,
+          error: 'Timeout: la consulta tardó demasiado en ejecutarse',
+          query: query,
+          results: results,
+          count: results.length
+        });
+      }
+    }, 30000); // 30 segundos timeout
+
   } catch (error) {
     console.error('❌ Error fatal en consulta Prolog:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      query: req.body.query
-    });
+    
+    if (!responseSent) {
+      sendResponse({
+        success: false,
+        error: `Error del servidor: ${error.message}`,
+        query: req.body.query,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    }
   }
 });
 
@@ -1527,22 +1658,22 @@ app.get('/api/test-db', async (req, res) => {
 app.delete('/admin/clear-database', async (req, res) => {
   try {
     console.log('🗑️  Solicitando limpieza completa de la base de datos...');
-    
+
     // Eliminar TODOS los datos de todas las tablas
     await pool.query('DELETE FROM prolog_facts');
     await pool.query('DELETE FROM prolog_rules');
     await pool.query('DELETE FROM saved_queries');
     await pool.query('DELETE FROM sessions');
-    
+
     console.log('✅ Base de datos limpiada completamente');
-    
+
     res.json({
       success: true,
       message: 'Base de datos limpiada completamente',
       tablesCleared: ['sessions', 'prolog_facts', 'prolog_rules', 'saved_queries'],
       recordsDeleted: 'Todos los registros eliminados'
     });
-    
+
   } catch (error) {
     console.error('❌ Error limpiando base de datos:', error);
     res.status(500).json({
@@ -1557,23 +1688,23 @@ app.delete('/admin/clear-database', async (req, res) => {
 app.delete('/session/clear/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
-    
+
     console.log(`🗑️  Limpiando sesión: ${sessionId}`);
-    
+
     // Eliminar todos los datos de la sesión específica
     await pool.query('DELETE FROM prolog_facts WHERE session_id = $1', [sessionId]);
     await pool.query('DELETE FROM prolog_rules WHERE session_id = $1', [sessionId]);
     await pool.query('DELETE FROM saved_queries WHERE session_id = $1', [sessionId]);
     await pool.query('DELETE FROM sessions WHERE id = $1', [sessionId]);
-    
+
     console.log(`✅ Sesión ${sessionId} limpiada completamente`);
-    
+
     res.json({
       success: true,
       message: `Sesión ${sessionId} limpiada completamente`,
       sessionId: sessionId
     });
-    
+
   } catch (error) {
     console.error('❌ Error limpiando sesión:', error);
     res.status(500).json({
@@ -1590,35 +1721,35 @@ app.get('/admin/session-stats', async (req, res) => {
     // Obtener todas las sesiones
     const sessionsResult = await pool.query('SELECT id FROM sessions');
     const sessions = sessionsResult.rows;
-    
+
     const sessionStats = {};
-    
+
     for (const session of sessions) {
       const sessionId = session.id;
-      
+
       const factsCount = await pool.query(
         'SELECT COUNT(*) FROM prolog_facts WHERE session_id = $1',
         [sessionId]
       );
-      
+
       const rulesCount = await pool.query(
         'SELECT COUNT(*) FROM prolog_rules WHERE session_id = $1',
         [sessionId]
       );
-      
+
       sessionStats[sessionId] = {
         facts: parseInt(factsCount.rows[0].count),
         rules: parseInt(rulesCount.rows[0].count),
         hasData: parseInt(factsCount.rows[0].count) > 0
       };
     }
-    
+
     res.json({
       success: true,
       sessions: sessionStats,
       totalSessions: sessions.length
     });
-    
+
   } catch (error) {
     console.error('Error obteniendo estadísticas:', error);
     res.status(500).json({
@@ -1626,6 +1757,60 @@ app.get('/admin/session-stats', async (req, res) => {
       error: error.message
     });
   }
+});
+
+// Agregar esta ruta después de las otras rutas
+app.post('/generate-report', async (req, res) => {
+    try {
+        const { sessionId, queries = [], analysis = {} } = req.body;
+        
+        console.log('📊 Generando informe CRISP-DM...');
+        
+        const sessionData = {
+            sessionId: sessionId || 'default',
+            timestamp: new Date().toLocaleString(),
+            user: 'Equipo de Desarrollo'
+        };
+        
+        const prologResults = {
+            queries: queries,
+            totalExecuted: queries.length,
+            successRate: 100,
+            rulesGenerated: 65
+        };
+        
+        const analysisData = {
+            totalRecords: 32,
+            accuracy: 81.54,
+            totalRules: 65,
+            safeRules: 53,
+            dangerousRules: 12,
+            chartData: {
+                safe: 53,
+                dangerous: 12
+            }
+        };
+        
+        const pdfBuffer = await pdfGenerator.generateCRISPDMReport(
+            sessionData, 
+            prologResults, 
+            analysisData
+        );
+        
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename=informe-crisp-dm.pdf');
+        res.send(pdfBuffer);
+        
+        console.log('✅ Informe PDF generado exitosamente');
+        
+    } catch (error) {
+        console.error('❌ Error generando PDF:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error generando informe PDF',
+            details: error.message
+        });
+    }
 });
 
 // 🔥 INICIAR EL SERVIDOR

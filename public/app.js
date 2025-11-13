@@ -67,6 +67,20 @@ const loadingState = {
 
 // Inicialización
 document.addEventListener('DOMContentLoaded', function () {
+
+  const modal = document.getElementById('helpModal');
+  if (modal) {
+    modal.addEventListener('click', function (event) {
+      if (event.target === modal) {
+        closeHelpModal();
+      }
+    });
+  }
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+      closeHelpModal();
+    }
+  });
   initializeEventListeners();
   updateSessionInfo();
   setupQueryExamples();
@@ -988,34 +1002,34 @@ async function clearDatabase() {
       appState.currentData = [];
       appState.prologFacts = '';
       appState.currentAnalysis = null;
-      
+
       // Limpiar carrusel de reglas
       carouselState.savedRules = [];
       carouselState.currentRuleSet = [];
       localStorage.removeItem('attributeRuleCards');
-      
+
       // Limpiar interfaz
       document.getElementById('dataTable').innerHTML = '';
       document.getElementById('fileInfo').style.display = 'none';
       document.getElementById('statsCard').style.display = 'none';
       document.getElementById('prologResults').style.display = 'none';
-      
+
       // Actualizar carrusel
       updateCarousel();
       updateCarouselInfo();
-      
+
       // Crear nueva sesión limpia
       appState.setSessionId('session_' + Date.now());
-      
-      showNotification('success', 'Base de Datos Limpiada', 
+
+      showNotification('success', 'Base de Datos Limpiada',
         '✅ Todos los datos han sido eliminados\n🆕 Nueva sesión creada\n🗑️ Base de datos completamente vacía');
-        
+
     } else {
       throw new Error(result.error);
     }
   } catch (error) {
     console.error('❌ Error limpiando base de datos:', error);
-    showNotification('error', 'Error Limpiando', 
+    showNotification('error', 'Error Limpiando',
       `No se pudo limpiar la base de datos: ${error.message}`);
   } finally {
     hideLoading();
@@ -1042,22 +1056,22 @@ async function clearCurrentSession() {
       appState.currentData = [];
       appState.prologFacts = '';
       appState.currentAnalysis = null;
-      
+
       // Limpiar interfaz
       document.getElementById('dataTable').innerHTML = '';
       document.getElementById('fileInfo').style.display = 'none';
       document.getElementById('statsCard').style.display = 'none';
       document.getElementById('prologResults').style.display = 'none';
-      
-      showNotification('success', 'Sesión Limpiada', 
+
+      showNotification('success', 'Sesión Limpiada',
         `✅ Sesión ${appState.sessionId} ha sido limpiada\n📊 Todos los datos eliminados`);
-        
+
     } else {
       throw new Error(result.error);
     }
   } catch (error) {
     console.error('❌ Error limpiando sesión:', error);
-    showNotification('error', 'Error Limpiando', 
+    showNotification('error', 'Error Limpiando',
       `No se pudo limpiar la sesión: ${error.message}`);
   } finally {
     hideLoading();
@@ -1069,24 +1083,24 @@ async function showDatabaseStatus() {
   try {
     const response = await fetch('/api/status');
     const status = await response.json();
-    
+
     // Obtener estadísticas de todas las sesiones
     const sessionsResponse = await fetch('/admin/session-stats');
     const sessionsData = await sessionsResponse.json();
-    
+
     let message = `📊 ESTADO DE LA BASE DE DATOS:\n\n`;
     message += `🔗 PostgreSQL: ${status.database}\n`;
     message += `🕐 Última verificación: ${new Date().toLocaleString()}\n\n`;
-    
+
     if (sessionsData.success) {
       message += `📁 SESIONES ACTIVAS:\n`;
       Object.entries(sessionsData.sessions).forEach(([sessionId, sessionInfo]) => {
         message += `• ${sessionId}: ${sessionInfo.facts} hechos, ${sessionInfo.rules} reglas\n`;
       });
     }
-    
+
     showNotification('info', 'Estado de Base de Datos', message);
-    
+
   } catch (error) {
     showNotification('error', 'Error', 'No se pudo obtener el estado de la base de datos');
   }
@@ -2017,7 +2031,7 @@ async function executePrologQuery() {
 }
 
 // 🔥 CORREGIR: Función para mostrar resultados Prolog
-function displayPrologResults(results, count) {
+function displayPrologResults(results, count, query) {
   const resultCount = document.getElementById('resultCount');
   const prologOutput = document.getElementById('prologOutput');
   const prologResults = document.getElementById('prologResults');
@@ -2027,6 +2041,9 @@ function displayPrologResults(results, count) {
     return;
   }
 
+  // Asegurar que query sea string
+  const safeQuery = query || 'Consulta Prolog';
+
   // Actualizar contador
   resultCount.textContent = `${count} ${count === 1 ? 'resultado' : 'resultados'}`;
 
@@ -2035,109 +2052,93 @@ function displayPrologResults(results, count) {
     prologOutput.innerHTML = `
       <div class="no-results">
         <i class="fas fa-search"></i>
-        <h4>No se encontraron resultados</h4>
-        <p>La consulta se ejecutó correctamente pero no devolvió soluciones.</p>
+        <h4>Consulta ejecutada correctamente</h4>
+        <p>La consulta <strong>"${safeQuery}"</strong> se ejecutó pero no devolvió resultados.</p>
+        <div class="result-type-info">
+          <span class="result-badge info">ℹ️ CONSULTA VÁLIDA</span>
+          <p>Esto puede significar:</p>
+          <ul>
+            <li>La condición no se cumple para ningún dato</li>
+            <li>Los hechos no coinciden con el patrón buscado</li>
+            <li>La consulta es correcta pero sin coincidencias</li>
+          </ul>
+        </div>
       </div>
     `;
   } else {
-    let html = '<div class="results-grid">';
+    const queryType = detectQueryType(safeQuery);
+    let html = `
+      <div class="results-intuitive">
+        <div class="query-type-badge ${queryType}">
+          <i class="fas ${getQueryTypeIcon(queryType)}"></i>
+          ${getQueryTypeLabel(queryType)}
+        </div>
+    `;
 
-    results.forEach((result, index) => {
-      // 🔥 CORRECIÓN: Manejar diferentes formatos de resultados
-      if (result.success !== undefined && Object.keys(result).length === 1) {
-        // Resultado de éxito simple
-        html += `
-          <div class="result-item">
-            <div class="result-header">
-              <span class="result-number">#${index + 1}</span>
-              <span class="result-type">Éxito</span>
-            </div>
-            <div class="result-content">
-              <div class="success-message">
-                <i class="fas fa-check"></i> Consulta ejecutada con éxito
-              </div>
+    // Mostrar resultados según el tipo
+    if (results.length === 1 && Object.keys(results[0]).length === 0) {
+      // Resultado booleano true
+      html += `
+        <div class="boolean-result true">
+          <div class="boolean-icon">
+            <i class="fas fa-check-circle"></i>
+          </div>
+          <div class="boolean-content">
+            <h3>VERDADERO (true)</h3>
+            <p>La consulta <strong>"${safeQuery}"</strong> es <strong>verdadera</strong></p>
+            <div class="success-note">✓ La condición se cumple en la base de conocimiento</div>
+          </div>
+        </div>
+      `;
+    } else {
+      // Resultados múltiples
+      html += `
+        <div class="facts-summary">
+          <div class="summary-card">
+            <i class="fas fa-database"></i>
+            <div class="summary-content">
+              <h4>${count} coincidencias encontradas</h4>
+              <p>La base de conocimiento contiene ${count} hechos que cumplen con la consulta</p>
             </div>
           </div>
-        `;
-      } else if (result.ID || result.Columna || result.Valor) {
-        // 🔥 CORRECIÓN: Resultado con variables Prolog
+        </div>
+        <div class="results-grid">
+      `;
+
+      results.forEach((result, index) => {
         html += `
-          <div class="result-item">
+          <div class="result-card">
             <div class="result-header">
-              <span class="result-number">#${index + 1}</span>
+              <span class="result-index">#${index + 1}</span>
               <span class="result-type">Solución</span>
             </div>
             <div class="result-content">
         `;
 
-        // Mostrar ID si existe
-        if (result.ID && result.ID !== 'undefined') {
-          html += `
-            <div class="variable-binding">
-              <span class="variable-name">ID</span>
-              <span class="binding-operator"> = </span>
-              <span class="variable-value">${result.ID}</span>
-            </div>
-          `;
+        if (Object.keys(result).length === 0) {
+          html += `<div class="simple-success">✓ Consulta satisfecha</div>`;
+        } else {
+          Object.entries(result).forEach(([variable, value]) => {
+            if (variable !== 'success' && variable !== 'undefined' && value !== undefined) {
+              html += `
+                <div class="variable-binding">
+                  <span class="variable-name">${variable}</span>
+                  <span class="binding-operator"> = </span>
+                  <span class="variable-value">${formatPrologValue(value)}</span>
+                </div>
+              `;
+            }
+          });
         }
-
-        // Mostrar Columna si existe
-        if (result.Columna && result.Columna !== 'undefined') {
-          html += `
-            <div class="variable-binding">
-              <span class="variable-name">Columna</span>
-              <span class="binding-operator"> = </span>
-              <span class="variable-value">${result.Columna}</span>
-            </div>
-          `;
-        }
-
-        // Mostrar Valor si existe
-        if (result.Valor && result.Valor !== 'undefined') {
-          html += `
-            <div class="variable-binding">
-              <span class="variable-name">Valor</span>
-              <span class="binding-operator"> = </span>
-              <span class="variable-value">${result.Valor}</span>
-            </div>
-          `;
-        }
-
-        // Mostrar otras variables
-        Object.entries(result).forEach(([variable, value]) => {
-          if (variable !== 'ID' && variable !== 'Columna' && variable !== 'Valor' &&
-            variable !== 'success' && variable !== 'undefined' &&
-            value !== undefined && value !== null) {
-            const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
-            html += `
-              <div class="variable-binding">
-                <span class="variable-name">${variable}</span>
-                <span class="binding-operator"> = </span>
-                <span class="variable-value">${displayValue}</span>
-              </div>
-            `;
-          }
-        });
 
         html += `
             </div>
           </div>
         `;
-      } else if (Object.keys(result).length > 0) {
-        // Otros tipos de resultados
-        html += `
-          <div class="result-item">
-            <div class="result-header">
-              <span class="result-number">#${index + 1}</span>
-              <span class="result-type">Resultado</span>
-            </div>
-            <div class="result-content">
-              <div class="simple-result">${JSON.stringify(result, null, 2)}</div>
-            </div>
-          </div>
-        `;
-      }
-    });
+      });
+
+      html += '</div>';
+    }
 
     html += '</div>';
     prologOutput.innerHTML = html;
@@ -2146,6 +2147,65 @@ function displayPrologResults(results, count) {
   // Mostrar contenedor de resultados
   prologResults.style.display = 'block';
 }
+
+// 🔥 CORREGIR: Función detectQueryType
+function detectQueryType(query) {
+  if (!query || typeof query !== 'string') {
+    return 'fact'; // Valor por defecto
+  }
+
+  const q = query.toLowerCase().trim();
+
+  if (q.includes(':-') || q.includes('->')) return 'rule';
+  if (q.endsWith('.') && !q.includes('(') && !q.includes(')')) return 'boolean';
+  if (q.includes('findall') || q.includes('bagof') || q.includes('setof')) return 'aggregate';
+  if (q.includes(',') || q.includes(';')) return 'complex';
+  if (q.includes('_') || /[A-Z][a-zA-Z]*/.test(q)) return 'enumerate';
+
+  return 'fact';
+}
+
+// 🔥 NUEVO: Obtener icono según tipo de consulta
+function getQueryTypeIcon(type) {
+  const icons = {
+    'boolean': 'fa-question-circle',
+    'fact': 'fa-search',
+    'enumerate': 'fa-list',
+    'aggregate': 'fa-calculator',
+    'complex': 'fa-project-diagram',
+    'rule': 'fa-cogs'
+  };
+  return icons[type] || 'fa-code';
+}
+
+// 🔥 NUEVO: Obtener etiqueta según tipo de consulta
+function getQueryTypeLabel(type) {
+  const labels = {
+    'boolean': 'Consulta Booleana',
+    'fact': 'Búsqueda de Hechos',
+    'enumerate': 'Enumeración',
+    'aggregate': 'Agregación',
+    'complex': 'Consulta Compleja',
+    'rule': 'Evaluación de Regla'
+  };
+  return labels[type] || 'Consulta Prolog';
+}
+
+// 🔥 NUEVO: Formatear valores Prolog
+function formatPrologValue(value) {
+  if (value === null || value === undefined) return '<span class="null-value">null</span>';
+  if (value === true) return '<span class="true-value">✓ true</span>';
+  if (value === false) return '<span class="false-value">✗ false</span>';
+
+  const str = String(value);
+  if (str === '[]') return '<span class="empty-list">[]</span>';
+  if (str.startsWith('[') && str.endsWith(']')) return `<span class="list-value">${str}</span>`;
+  if (/^\d+$/.test(str)) return `<span class="number-value">${str}</span>`;
+  if (str.startsWith("'") && str.endsWith("'")) return `<span class="string-value">${str}</span>`;
+
+  return `<span class="atom-value">${str}</span>`;
+}
+
 
 // Función para validar consultas Prolog
 function validatePrologQuery(query) {
@@ -2494,7 +2554,7 @@ function exportResults() {
 }
 
 // Función para procesar archivos de datos
-// 🔥 MEJORAR processDataFile para evitar duplicados
+// MEJORAR processDataFile para evitar duplicados
 let isProcessingFile = false;
 
 async function processDataFile(file) {
@@ -2505,18 +2565,35 @@ async function processDataFile(file) {
   }
 
   isProcessingFile = true;
-  showLoading('processing', 'Procesando archivo de datos...', 'Extrayendo y organizando información');
+  
+  // Mostrar loading optimizado para archivos grandes
+  const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+  const isLargeFile = file.size > 5 * 1024 * 1024; // > 5MB
+  
+  showLoading('processing', 
+    isLargeFile ? 'Procesando archivo grande...' : 'Procesando archivo...', 
+    isLargeFile ? `Archivo de ${fileSizeMB} MB - Esto puede tomar unos segundos...` : 'Extrayendo y organizando información'
+  );
 
   const formData = new FormData();
   formData.append('file', file);
   formData.append('sessionId', appState.sessionId);
 
+  // Timeout para evitar bloqueos eternos
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('Timeout: El archivo es demasiado grande o hay problemas de conexión')), 60000);
+  });
+
   try {
-    console.log(`📤 Enviando archivo: ${file.name}`);
-    const response = await fetch('/upload/data', {
+    console.log(`📤 Enviando archivo: ${file.name} (${fileSizeMB} MB)`);
+    
+    const fetchPromise = fetch('/upload/data', {
       method: 'POST',
       body: formData
     });
+
+    // Usar Promise.race para timeout
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
 
     if (!response.ok) {
       throw new Error(`Error HTTP: ${response.status}`);
@@ -2529,26 +2606,103 @@ async function processDataFile(file) {
       appState.prologFacts = result.prologFacts;
       appState.currentFile = file;
 
-      showNotification('success', 'Archivo Procesado',
-        `${result.data.length} registros cargados correctamente`);
-
-      displayFileInfo(file, result.stats);
-      displayDataTable(result.data);
-      displayStats(result.stats);
+      // 🔥 OPTIMIZAR: Mostrar solo información básica para archivos grandes
+      if (isLargeFile) {
+        showNotification('success', 'Archivo Grande Procesado',
+          `${result.data.length} registros cargados correctamente\n\n💡 Para mejor rendimiento, considera dividir archivos muy grandes (>50MB)`);
+        
+        // Mostrar tabla con paginación virtual
+        displayOptimizedDataTable(result.data, result.stats);
+      } else {
+        showNotification('success', 'Archivo Procesado',
+          `${result.data.length} registros cargados correctamente`);
+        
+        displayFileInfo(file, result.stats);
+        displayDataTable(result.data);
+      }
+      
+      displayStats(result.stats, result.data);
 
       // Generar reglas automáticamente para datos
-      generateDataRules(result.data, result.stats);
+      if (!isLargeFile) {
+        generateDataRules(result.data, result.stats);
+      }
 
     } else {
       throw new Error(result.error || 'Error desconocido');
     }
   } catch (error) {
     console.error('❌ Error procesando archivo:', error);
-    showNotification('error', 'Error', `Error al procesar el archivo: ${error.message}`);
+    
+    if (error.message.includes('Timeout')) {
+      showNotification('error', 'Tiempo Excedido', 
+        `El archivo es demasiado grande (${fileSizeMB} MB). Intenta con un archivo más pequeño o divídelo en partes.`);
+    } else {
+      showNotification('error', 'Error', `Error al procesar el archivo: ${error.message}`);
+    }
   } finally {
     hideLoading();
     isProcessingFile = false;
   }
+}
+
+// 🔥 NUEVA FUNCIÓN: Mostrar tabla optimizada para archivos grandes
+function displayOptimizedDataTable(data, stats) {
+  const dataTable = document.getElementById('dataTable');
+  if (!dataTable) return;
+
+  if (!data || data.length === 0) {
+    dataTable.innerHTML = '<p class="text-muted">No hay datos para mostrar</p>';
+    return;
+  }
+
+  const totalRecords = data.length;
+  const sampleSize = Math.min(100, totalRecords); // Mostrar máximo 100 registros
+  const sampleData = data.slice(0, sampleSize);
+  
+  const headers = Object.keys(sampleData[0]);
+  
+  let html = `
+    <div class="large-file-warning">
+      <i class="fas fa-info-circle"></i>
+      <strong>Archivo grande detectado:</strong> Mostrando ${sampleSize} de ${totalRecords} registros para mejor rendimiento
+    </div>
+    <div class="table-responsive">
+      <table class="data-table">
+        <thead>
+          <tr>
+            ${headers.map(header => `<th>${header}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  sampleData.forEach(row => {
+    html += '<tr>';
+    headers.forEach(header => {
+      const value = row[header];
+      // Truncar valores muy largos
+      const displayValue = value !== null && value !== undefined ? 
+        String(value).length > 100 ? String(value).substring(0, 100) + '...' : value : '';
+      html += `<td title="${value}">${displayValue}</td>`;
+    });
+    html += '</tr>';
+  });
+
+  html += `
+        </tbody>
+      </table>
+    </div>
+    <div class="table-footer">
+      <small class="text-muted">
+        <i class="fas fa-database"></i>
+        Total: ${totalRecords} registros, ${headers.length} columnas
+        ${totalRecords > sampleSize ? ` (mostrando ${sampleSize} registros)` : ''}
+      </small>
+    </div>
+  `;
+
+  dataTable.innerHTML = html;
 }
 
 // Función para mostrar información del archivo
@@ -2606,7 +2760,8 @@ function displayDataTable(data) {
 }
 
 // Función para mostrar estadísticas
-function displayStats(stats) {
+// 🔥 MEJORAR: Mostrar estadísticas con gráficos
+function displayStats(stats, data) {
   const statsCard = document.getElementById('statsCard');
   const statsGrid = document.getElementById('statsGrid');
 
@@ -2614,50 +2769,199 @@ function displayStats(stats) {
 
   let html = '';
 
-  // Estadísticas generales
+  // Estadísticas generales con gráficos
   html += `
-        <div class="stat-card">
-            <div class="stat-icon">
-                <i class="fas fa-database"></i>
-            </div>
-            <div class="stat-info">
-                <div class="stat-value">${stats.totalRecords}</div>
-                <div class="stat-label">Registros Totales</div>
-            </div>
+    <div class="stats-overview">
+      <div class="stat-card main">
+        <div class="stat-icon">
+          <i class="fas fa-database"></i>
         </div>
-        <div class="stat-card">
-            <div class="stat-icon">
-                <i class="fas fa-columns"></i>
-            </div>
-            <div class="stat-info">
-                <div class="stat-value">${stats.columns}</div>
-                <div class="stat-label">Columnas</div>
-            </div>
+        <div class="stat-info">
+          <div class="stat-value">${stats.totalRecords}</div>
+          <div class="stat-label">Registros Totales</div>
         </div>
-    `;
+      </div>
+      
+      <div class="stat-card main">
+        <div class="stat-icon">
+          <i class="fas fa-columns"></i>
+        </div>
+        <div class="stat-info">
+          <div class="stat-value">${stats.columns}</div>
+          <div class="stat-label">Columnas</div>
+        </div>
+      </div>
+    </div>
+  `;
 
-  // Estadísticas por columna
+  // Gráficos circulares para distribución de datos
+  if (data && data.length > 0) {
+    html += `<div class="charts-section">
+      <h4><i class="fas fa-chart-pie"></i> Distribución de Datos</h4>
+      <div class="charts-grid">`;
+
+    // Generar gráficos para las primeras 3 columnas categóricas
+    const categoricalColumns = findCategoricalColumns(data).slice(0, 3);
+
+    categoricalColumns.forEach(column => {
+      const distribution = calculateDistribution(data, column);
+      html += createPieChart(column, distribution);
+    });
+
+    html += `</div></div>`;
+  }
+
+  // Estadísticas detalladas por columna
   if (stats.columnStats) {
+    html += `<div class="detailed-stats">
+      <h4><i class="fas fa-chart-bar"></i> Estadísticas por Columna</h4>
+      <div class="column-stats-grid">`;
+
     Object.entries(stats.columnStats).forEach(([column, columnStats]) => {
       html += `
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-chart-bar"></i>
-                    </div>
-                    <div class="stat-info">
-                        <div class="stat-value">${column}</div>
-                        <div class="stat-label">
-                            ${columnStats.type} | ${columnStats.nonNull} no nulos
-                            ${columnStats.unique ? `| ${columnStats.unique} únicos` : ''}
-                        </div>
-                    </div>
-                </div>
-            `;
+        <div class="column-stat-card">
+          <div class="column-header">
+            <h5>${column}</h5>
+            <span class="data-type ${columnStats.type}">${columnStats.type}</span>
+          </div>
+          <div class="column-metrics">
+            <div class="metric">
+              <span class="metric-label">No nulos:</span>
+              <span class="metric-value">${columnStats.nonNull}</span>
+            </div>
+            ${columnStats.unique ? `
+            <div class="metric">
+              <span class="metric-label">Valores únicos:</span>
+              <span class="metric-value">${columnStats.unique}</span>
+            </div>
+            ` : ''}
+            ${columnStats.mostFrequent ? `
+            <div class="metric">
+              <span class="metric-label">Más frecuente:</span>
+              <span class="metric-value">${columnStats.mostFrequent.value} (${columnStats.mostFrequent.count})</span>
+            </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
     });
+
+    html += `</div></div>`;
   }
 
   statsGrid.innerHTML = html;
   statsCard.style.display = 'block';
+
+  // Inicializar gráficos después de renderizar
+  setTimeout(initializeCharts, 100);
+}
+
+// 🔥 NUEVO: Encontrar columnas categóricas
+function findCategoricalColumns(data) {
+  if (!data || data.length === 0) return [];
+
+  const sample = data[0];
+  const categorical = [];
+
+  Object.keys(sample).forEach(key => {
+    const values = data.map(row => row[key]);
+    const uniqueValues = [...new Set(values)].filter(v => v !== null && v !== undefined);
+
+    // Considerar categórica si tiene menos de 10 valores únicos y no son todos numéricos
+    if (uniqueValues.length <= 10 && uniqueValues.length > 1) {
+      const numericCount = uniqueValues.filter(v => !isNaN(v) && v !== '').length;
+      if (numericCount / uniqueValues.length < 0.8) {
+        categorical.push(key);
+      }
+    }
+  });
+
+  return categorical;
+}
+
+// 🔥 NUEVO: Calcular distribución de datos
+function calculateDistribution(data, column) {
+  const distribution = {};
+
+  data.forEach(row => {
+    const value = row[column];
+    if (value !== null && value !== undefined) {
+      const key = String(value);
+      distribution[key] = (distribution[key] || 0) + 1;
+    }
+  });
+
+  return distribution;
+}
+
+// 🔥 NUEVO: Crear gráfico circular
+function createPieChart(column, distribution) {
+  const total = Object.values(distribution).reduce((sum, count) => sum + count, 0);
+  const items = Object.entries(distribution)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5); // Top 5 categorías
+
+  let chartHtml = `
+    <div class="pie-chart-card">
+      <div class="pie-chart-header">
+        <h6>${column}</h6>
+        <span class="chart-total">${total} registros</span>
+      </div>
+      <div class="pie-chart-container">
+        <div class="pie-chart" id="pie-${column.replace(/[^a-zA-Z0-9]/g, '-')}">
+          <div class="pie-chart-svg">
+  `;
+
+  // Generar SVG del gráfico circular
+  let currentAngle = 0;
+  const colors = ['#6366f1', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
+
+  items.forEach(([label, count], index) => {
+    const percentage = (count / total) * 100;
+    const angle = (percentage / 100) * 360;
+
+    chartHtml += `
+      <div class="pie-segment" 
+           style="--start: ${currentAngle}deg; --end: ${currentAngle + angle}deg; --color: ${colors[index % colors.length]};"
+           title="${label}: ${count} (${percentage.toFixed(1)}%)">
+      </div>
+    `;
+
+    currentAngle += angle;
+  });
+
+  chartHtml += `
+          </div>
+          <div class="pie-center">
+            <span>${items.length}</span>
+            <small>categorías</small>
+          </div>
+        </div>
+      </div>
+      <div class="pie-legend">
+  `;
+
+  items.forEach(([label, count], index) => {
+    const percentage = ((count / total) * 100).toFixed(1);
+    chartHtml += `
+      <div class="legend-item">
+        <span class="legend-color" style="background: ${colors[index % colors.length]}"></span>
+        <span class="legend-label">${label}</span>
+        <span class="legend-value">${count} (${percentage}%)</span>
+      </div>
+    `;
+  });
+
+  chartHtml += `</div></div>`;
+  return chartHtml;
+}
+
+// 🔥 NUEVO: Inicializar gráficos
+function initializeCharts() {
+  // Agregar animaciones a los gráficos circulares
+  document.querySelectorAll('.pie-chart').forEach(chart => {
+    chart.classList.add('animated');
+  });
 }
 
 // Función para generar reglas automáticas desde datos
@@ -3322,6 +3626,73 @@ async function pruebasCorregidas() {
     hideLoading();
   }
 }
+// 🔥 NUEVO: Función para generar informe PDF
+async function generateReport() {
+  showLoading('processing', 'Generando informe PDF...', 'Compilando resultados CRISP-DM');
+
+  try {
+    // Recopilar datos de la sesión actual
+    const sessionData = {
+      sessionId: appState.sessionId,
+      queries: getRecentQueries(),
+      analysis: appState.currentAnalysis || {}
+    };
+
+    const response = await fetch('/generate-report', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(sessionData)
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error HTTP: ${response.status}`);
+    }
+
+    // Descargar el PDF
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `informe-crisp-dm-${new Date().getTime()}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+
+    showNotification('success', 'Informe Generado',
+      '✅ Informe PDF descargado exitosamente\n📊 Incluye todas las fases CRISP-DM');
+
+  } catch (error) {
+    console.error('❌ Error generando informe:', error);
+    showNotification('error', 'Error en Informe',
+      `No se pudo generar el PDF: ${error.message}`);
+  } finally {
+    hideLoading();
+  }
+}
+
+// 🔥 NUEVO: Obtener consultas recientes
+function getRecentQueries() {
+  const queryEditor = document.getElementById('prologQuery');
+  const recentQueries = JSON.parse(localStorage.getItem('recentQueries') || '[]');
+
+  if (queryEditor && queryEditor.value.trim()) {
+    recentQueries.push(queryEditor.value.trim());
+    // Mantener solo las últimas 10 consultas
+    if (recentQueries.length > 10) {
+      recentQueries.shift();
+    }
+    localStorage.setItem('recentQueries', JSON.stringify(recentQueries));
+  }
+
+  return recentQueries;
+}
+
+// 🔥 Agregar al objeto window para acceso global
+window.generateReport = generateReport;
+window.safeGenerateReport = generateReport;
 
 // 🔥 PRUEBAS CORREGIDAS
 async function pruebasCorregidas() {
@@ -3343,6 +3714,97 @@ async function pruebasCorregidas() {
       console.log(`   Ejemplo:`, resultado.results[0]);
     }
   }
+}
+
+// 🔥 NUEVO: Sistema de Ayuda Completo
+
+// Mostrar modal de ayuda
+function showHelpModal() {
+  const modal = document.getElementById('helpModal');
+  if (modal) {
+    modal.style.display = 'block';
+    document.body.style.overflow = 'hidden'; // Prevenir scroll
+  }
+}
+
+// Cerrar modal de ayuda
+function closeHelpModal() {
+  const modal = document.getElementById('helpModal');
+  if (modal) {
+    modal.style.display = 'none';
+    document.body.style.overflow = 'auto'; // Restaurar scroll
+  }
+}
+
+// Cambiar pestañas de ayuda
+function openHelpTab(tabName) {
+  // Ocultar todas las pestañas
+  document.querySelectorAll('.tab-content').forEach(tab => {
+    tab.classList.remove('active');
+  });
+
+  // Desactivar todos los botones
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+
+  // Mostrar pestaña seleccionada
+  const targetTab = document.getElementById(tabName + '-tab');
+  if (targetTab) {
+    targetTab.classList.add('active');
+  }
+
+  // Activar botón
+  event.currentTarget.classList.add('active');
+}
+
+// Copiar consulta al editor
+function copyToQuery(query) {
+  const queryEditor = document.getElementById('prologQuery');
+  if (queryEditor) {
+    queryEditor.value = query;
+    queryEditor.focus();
+
+    // Efecto visual de confirmación
+    const originalBorder = queryEditor.style.borderColor;
+    queryEditor.style.borderColor = '#10b981';
+    queryEditor.style.boxShadow = '0 0 10px rgba(16, 185, 129, 0.3)';
+
+    setTimeout(() => {
+      queryEditor.style.borderColor = originalBorder;
+      queryEditor.style.boxShadow = '';
+    }, 2000);
+
+    showNotification('success', 'Consulta Copiada',
+      'La consulta se ha copiado al editor. Presiona Ctrl+Enter para ejecutar.');
+  }
+}
+
+// Demo guiada automática
+function startQuickDemo() {
+  closeHelpModal();
+
+  showNotification('info', 'Demo Iniciada',
+    'Sigue los pasos en la consola para una demostración guiada.');
+
+  // Paso 1: Copiar consulta básica
+  setTimeout(() => {
+    copyToQuery("clasificar_hongo('abultada', 'almendra', 'bosque', Clase).");
+    showNotification('info', 'Paso 1',
+      'Consulta copiada. Ejecútala con Ctrl+Enter para ver el resultado.');
+  }, 1000);
+
+  // Paso 2: Sugerir siguiente consulta
+  setTimeout(() => {
+    showNotification('info', 'Paso 2',
+      'Ahora prueba: es_ingerible(\'abultada\', \'almendra\', _).');
+  }, 5000);
+
+  // Paso 3: Sugerir estadísticas
+  setTimeout(() => {
+    showNotification('info', 'Paso 3',
+      'Finalmente ejecuta: estadisticas_hongos. y genera el PDF.');
+  }, 10000);
 }
 
 window.addDiagnosticButtons = addDiagnosticButtons;
@@ -3378,5 +3840,10 @@ window.clearAllRules = clearAllRules;
 window.nextRuleCard = nextRuleCard;
 window.prevRuleCard = prevRuleCard;
 window.goToPage = goToPage;
+window.showHelpModal = showHelpModal;
+window.closeHelpModal = closeHelpModal;
+window.openHelpTab = openHelpTab;
+window.copyToQuery = copyToQuery;
+window.startQuickDemo = startQuickDemo;
 
 console.log('🎯 Todas las funciones del sistema cargadas correctamente');
