@@ -1,6 +1,9 @@
 # 🧠 Sistema Prolog + Google Vision AI
 
-**Sistema interactivo de análisis de datos e imágenes con Prolog y Machine Learning**
+**Sistema interactivo didáctico con Prolog**
+
+![Captura del proyecto](https://raw.githubusercontent.com/lazamartinez/Prolog-Interactivo/main/imagenes/Captura1.png)
+
 
 ## 🌟 Características Principales
 
