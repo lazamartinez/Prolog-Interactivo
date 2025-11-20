@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Microscopio Prolog - Visualización de Árbol Lógico</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="visualizer-header">
+        <div class="header-content">
+            <div class="header-title">
+                <i class="fas fa-microscope"></i>
+                <h1>Lenguajes y Paradigmas de Programación 2025</h3>
+                <h1>Microscopio Prolog</h1>
+                <span class="subtitle">Visualización Interactiva del Árbol Lógico</span>
+            </div>
+            <div class="header-controls">
+                <button id="loadExample" class="btn btn-outline">
+                    <i class="fas fa-download"></i> Cargar Ejemplo
+                </button>
+                <button id="uploadFile" class="btn btn-primary">
+                    <i class="fas fa-upload"></i> Cargar Archivo .pl
+                </button>
+                <input type="file" id="fileInput" accept=".pl" style="display: none;">
+            </div>
+            <a href="http://localhost:3000/#" class="btn btn-outline">
+                <i class="fas fa-arrow-left"></i> Volver al Dashboard
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Sidebar -->
+        <aside class="control-panel">
+            <div class="panel-section">
+                <h3><i class="fas fa-sliders-h"></i> Controles</h3>
+
+                <div class="control-group">
+                    <label>Consulta Prolog:</label>
+                    <textarea id="prologQuery" class="query-input"
+                        placeholder="Ej: clasificar_hongo('abultada', 'almendra', 'bosque', Clase)."
+                        rows="3"></textarea>
+                </div>
+
+                <div class="control-group">
+                    <button id="executeQuery" class="btn btn-execute">
+                        <i class="fas fa-play"></i> Ejecutar Consulta
+                    </button>
+                    <button id="stepMode" class="btn btn-outline">
+                        <i class="fas fa-footsteps"></i> Modo Paso a Paso
+                    </button>
+                </div>
+
+                <div class="control-group">
+                    <label>Velocidad Animación:</label>
+                    <input type="range" id="animationSpeed" min="1" max="10" value="5" class="slider">
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <h3><i class="fas fa-info-circle"></i> Información del Nodo</h3>
+                <div id="nodeInfo" class="node-info">
+                    <p class="placeholder">Haz clic en un nodo para ver detalles</p>
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <h3><i class="fas fa-code"></i> Código Prolog</h3>
+                <div id="prologCode" class="code-display">
+                    <p class="placeholder">El código aparecerá aquí</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Visualization Area -->
+        <main class="visualization-area">
+            <div class="canvas-container">
+                <canvas id="logicCanvas"></canvas>
+
+                <!-- Overlay Controls -->
+                <div class="canvas-controls">
+                    <button id="zoomIn" class="control-btn" title="Zoom In">
+                        <i class="fas fa-search-plus"></i>
+                    </button>
+                    <button id="zoomOut" class="control-btn" title="Zoom Out">
+                        <i class="fas fa-search-minus"></i>
+                    </button>
+                    <button id="resetView" class="control-btn" title="Resetear Vista">
+                        <i class="fas fa-crosshairs"></i>
+                    </button>
+                    <button id="fullscreen" class="control-btn" title="Pantalla Completa">
+                        <i class="fas fa-expand"></i>
+                    </button>
+                </div>
+
+                <!-- Execution Progress -->
+                <div id="executionProgress" class="execution-progress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill"></div>
+                    </div>
+                    <span class="progress-text">Ejecutando consulta...</span>
+                </div>
+            </div>
+
+            <!-- Legend -->
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="color-dot fact"></div>
+                    <span>Hechos</span>
+                </div>
+                <div class="legend-item">
+                    <div class="color-dot rule"></div>
+                    <span>Reglas</span>
+                </div>
+                <div class="legend-item">
+                    <div class="color-dot predicate"></div>
+                    <span>Predicados</span>
+                </div>
+                <div class="legend-item">
+                    <div class="color-dot variable"></div>
+                    <span>Variables</span>
+                </div>
+                <div class="legend-item">
+                    <div class="color-dot failure"></div>
+                    <span>Fallos</span>
+                </div>
+                <div class="legend-item">
+                    <div class="color-dot success"></div>
+                    <span>Éxitos</span>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="fileModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-file-code"></i> Cargar Archivo Prolog</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <textarea id="prologInput" placeholder="Pega tu código Prolog aquí o carga un archivo .pl..."
+                    rows="15"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button id="loadFromText" class="btn btn-primary">Cargar desde Texto</button>
+                <button id="loadFromFile" class="btn btn-outline">Seleccionar Archivo</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <p>Procesando código Prolog...</p>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/tau-prolog@0.3.4/modules/core.js"></script>
+    <script src="https://unpkg.com/tau-prolog@0.3.4/modules/lists.js"></script>
+    <script src="https://unpkg.com/tau-prolog@0.3.4/modules/js.js"></script>
+    <script src="prolog-engine.js"></script>
+    <script src="tree-renderer.js"></script>
+    <script src="visualizer.js"></script>
+</body>
+
+</html>

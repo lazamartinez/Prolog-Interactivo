@@ -647,8 +647,6 @@ function displayAttributeAnalysis(analysis, prologFacts) {
   resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-
-
 // 🔥 NUEVO: Generar reglas de atributos automáticamente
 async function generateAttributeRules(analysis, autoQueries) {
   try {
@@ -1610,50 +1608,50 @@ function addDiagnosticButtons() {
   addDiagnosticButtonsToSection(querySection);
 }
 
-// 🔥 NUEVA FUNCIÓN AUXILIAR
-function addDiagnosticButtonsToSection(section) {
-  // Verificar si ya existen botones de diagnóstico
-  const existingDiagnostics = section.querySelector('.diagnostic-buttons');
-  if (existingDiagnostics) {
-    existingDiagnostics.remove();
-  }
+// // 🔥 NUEVA FUNCIÓN AUXILIAR
+// function addDiagnosticButtonsToSection(section) {
+//   // Verificar si ya existen botones de diagnóstico
+//   const existingDiagnostics = section.querySelector('.diagnostic-buttons');
+//   if (existingDiagnostics) {
+//     existingDiagnostics.remove();
+//   }
 
-  const diagnosticDiv = document.createElement('div');
-  diagnosticDiv.className = 'diagnostic-buttons';
-  diagnosticDiv.style.cssText = `
-    display: flex;
-    gap: 10px;
-    margin-top: 15px;
-    flex-wrap: wrap;
-    padding: 10px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  `;
+//   const diagnosticDiv = document.createElement('div');
+//   diagnosticDiv.className = 'diagnostic-buttons';
+//   diagnosticDiv.style.cssText = `
+//     display: flex;
+//     gap: 10px;
+//     margin-top: 15px;
+//     flex-wrap: wrap;
+//     padding: 10px;
+//     background: rgba(255, 255, 255, 0.05);
+//     border-radius: 8px;
+//     border: 1px solid rgba(255, 255, 255, 0.1);
+//   `;
 
-  diagnosticDiv.innerHTML = `
-    <div style="width: 100%; margin-bottom: 8px;">
-      <strong style="color: var(--primary-light);">
-        <i class="fas fa-tools"></i> Herramientas de Diagnóstico y Limpieza
-      </strong>
-    </div>
-    <button class="btn btn-outline btn-sm" onclick="verifySessionState()" title="Verificar estado de la sesión">
-      <i class="fas fa-search"></i> Verificar Sesión
-    </button>
-    <button class="btn btn-outline btn-sm" onclick="showDatabaseStatus()" title="Ver estado completo de la base de datos">
-      <i class="fas fa-database"></i> Estado BD
-    </button>
-    <button class="btn btn-outline btn-sm" onclick="clearCurrentSession()" title="Limpiar solo la sesión actual">
-      <i class="fas fa-broom"></i> Limpiar Sesión
-    </button>
-    <button class="btn btn-danger btn-sm" onclick="clearDatabase()" title="LIMPIAR TODA LA BASE DE DATOS (CUIDADO)">
-      <i class="fas fa-trash"></i> Limpiar Todo
-    </button>
-  `;
+//   diagnosticDiv.innerHTML = `
+//     <div style="width: 100%; margin-bottom: 8px;">
+//       <strong style="color: var(--primary-light);">
+//         <i class="fas fa-tools"></i> Herramientas de Diagnóstico y Limpieza
+//       </strong>
+//     </div>
+//     <button class="btn btn-outline btn-sm" onclick="verifySessionState()" title="Verificar estado de la sesión">
+//       <i class="fas fa-search"></i> Verificar Sesión
+//     </button>
+//     <button class="btn btn-outline btn-sm" onclick="showDatabaseStatus()" title="Ver estado completo de la base de datos">
+//       <i class="fas fa-database"></i> Estado BD
+//     </button>
+//     <button class="btn btn-outline btn-sm" onclick="clearCurrentSession()" title="Limpiar solo la sesión actual">
+//       <i class="fas fa-broom"></i> Limpiar Sesión
+//     </button>
+//     <button class="btn btn-danger btn-sm" onclick="clearDatabase()" title="LIMPIAR TODA LA BASE DE DATOS (CUIDADO)">
+//       <i class="fas fa-trash"></i> Limpiar Todo
+//     </button>
+//   `;
 
-  section.appendChild(diagnosticDiv);
-  console.log('✅ Botones de diagnóstico agregados correctamente');
-}
+//   section.appendChild(diagnosticDiv);
+//   console.log('✅ Botones de diagnóstico agregados correctamente');
+// }
 
 // 🔥 NUEVA FUNCIÓN: Verificar predicados cargados
 async function checkPredicates() {
